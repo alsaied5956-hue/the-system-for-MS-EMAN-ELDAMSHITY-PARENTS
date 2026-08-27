@@ -40,8 +40,13 @@ import {
   FileText,
   AlertTriangle,
   QrCode,
+  FileSpreadsheet,
+  PhoneOff,
+  ShieldAlert,
 } from 'lucide-react';
 import { AttendanceScannerTab } from './AttendanceScannerTab';
+import { PhoneAuditModal } from './PhoneAuditModal';
+import { exportPhoneAuditToExcel, exportPhoneAuditToPDF, analyzeStudentPhoneStatus } from '../../utils/phoneAuditExport';
 
 export const TeacherPortal: React.FC = () => {
   const {
@@ -125,6 +130,9 @@ export const TeacherPortal: React.FC = () => {
   // Reset Password Prompt state
   const [passResetBarcode, setPassResetBarcode] = useState<string | null>(null);
   const [newPassInput, setNewPassInput] = useState('');
+
+  // Phone & WhatsApp Audit Modal state
+  const [showPhoneAuditModal, setShowPhoneAuditModal] = useState(false);
 
   // Filtered Students
   const filteredStudents = sortedStudents.filter((s) => {
@@ -316,13 +324,25 @@ export const TeacherPortal: React.FC = () => {
               </select>
             </div>
 
-            <button
-              onClick={() => setShowAddStudentModal(true)}
-              className="btn-gold px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md w-full md:w-auto justify-center"
-            >
-              <Plus className="w-4 h-4" />
-              <span>إضافة حساب طالب جديد</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPhoneAuditModal(true)}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 flex items-center gap-1.5 transition-all shadow-sm"
+                title="حصر الأرقام المفقودة وغير الصالحة للواتساب وتصديرها Excel & PDF"
+              >
+                <ShieldAlert className="w-4 h-4 text-rose-400" />
+                <span>حصر أرقام الواتساب المفقودة ⚠️</span>
+              </button>
+
+              <button
+                onClick={() => setShowAddStudentModal(true)}
+                className="btn-gold px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-md w-full sm:w-auto justify-center"
+              >
+                <Plus className="w-4 h-4" />
+                <span>إضافة حساب طالب جديد</span>
+              </button>
+            </div>
           </div>
 
           {/* Accounts Grid */}
@@ -904,6 +924,38 @@ export const TeacherPortal: React.FC = () => {
       {/* ========================================================= */}
       {teacherTab === 'whatsapp-dispatch' && (
         <div className="space-y-6">
+          {/* Quick Notice & Phone Audit Banner */}
+          <div
+            className="p-4 sm:p-5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+            style={{
+              backgroundColor: isDark ? 'rgba(239, 68, 68, 0.08)' : '#fef2f2',
+              borderColor: 'rgba(239, 68, 68, 0.3)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-black text-rose-300">
+                  كشف وتدقيق أرقام الطلاب والواتساب (المفقودة وغير المسجلة)
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  يمكنك حصر جميع الطلاب الذين ليس لديهم رقم هاتف أو أرقامهم غير صالحة للواتساب وتصدير الكشف فوراً كملف PDF أو Excel.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPhoneAuditModal(true)}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-md flex items-center gap-1.5 transition-all shrink-0 w-full sm:w-auto justify-center"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>استخراج الكشف (PDF / Excel) ⚡</span>
+            </button>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Section A: Individual Student Report via WhatsApp */}
             <div
@@ -1743,6 +1795,15 @@ export const TeacherPortal: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ========================================================= */}
+      {/* PHONE & WHATSAPP AUDIT MODAL (EXCEL & PDF EXPORT) */}
+      {/* ========================================================= */}
+      <PhoneAuditModal
+        isOpen={showPhoneAuditModal}
+        onClose={() => setShowPhoneAuditModal(false)}
+        onEditStudent={(student) => setEditingStudent(student)}
+      />
     </div>
   );
 };

@@ -29,6 +29,11 @@ export interface StudentData {
   isActivated?: boolean;
   accountStatus?: AccountStatus;
   statusReason?: string;
+  
+  // WhatsApp Verification Status
+  whatsappStatus?: 'verified_active' | 'no_whatsapp' | 'untested' | 'missing';
+  whatsappTestedDate?: string;
+  whatsappNotes?: string;
 }
 
 export interface BroadcastAnnouncement {
