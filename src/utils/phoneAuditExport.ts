@@ -252,13 +252,14 @@ function getBadgeHtml(issueType: PhoneAuditItem['issueType']): string {
 }
 
 /**
- * High-Speed & High-Resolution HTML to PDF Generation with Arabic Typography & Full RTL layout
- * Generates a complete document grouped sequentially by grade (from 4th Primary to 3rd Secondary)
- * with a distinct styled separator banner before each grade.
+ * High-Speed & High-Resolution Discrete Page HTML-to-PDF Generation
+ * Guarantees that NO student row or name is ever split across two pages.
+ * Each page is rendered as an independent A4 container with exact fixed rows.
  */
 export async function exportPhoneAuditToPDF(
   items: PhoneAuditItem[],
-  gradeTitle = 'كافة الصفوف الدراسية (من الصف الرابع الابتدائي حتى الصف الثالث الثانوي)'
+  gradeTitle = 'كافة الصفوف الدراسية (من الصف الرابع الابتدائي حتى الصف الثالث الثانوي)',
+  onProgress?: (msg: string) => void
 ): Promise<void> {
   const dateFormatted = new Date().toLocaleDateString('ar-EG', {
     weekday: 'long',
@@ -281,243 +282,276 @@ export async function exportPhoneAuditToPDF(
   // Build the list of grades in exact sequential order (Primary 4 -> Secondary 3)
   const gradesToRender = isMultiGrade
     ? SEQUENTIAL_GRADES.filter((g) => {
-        if (gradeTitle.includes('الابتدائية')) {
-          return g.stage === 'المرحلة الابتدائية';
-        }
-        if (gradeTitle.includes('الإعدادية')) {
-          return g.stage === 'المرحلة الإعدادية';
-        }
-        if (gradeTitle.includes('الثانوية')) {
-          return g.stage === 'المرحلة الثانوية';
-        }
+        if (gradeTitle.includes('الابتدائية')) return g.stage === 'المرحلة الابتدائية';
+        if (gradeTitle.includes('الإعدادية')) return g.stage === 'المرحلة الإعدادية';
+        if (gradeTitle.includes('الثانوية')) return g.stage === 'المرحلة الثانوية';
         return true;
       })
     : SEQUENTIAL_GRADES.filter((g) => uniqueGradesInItems.includes(g.grade));
 
-  // Build HTML sections for each grade with distinct separator banners
-  const gradeSectionsHtml = gradesToRender
-    .map((gradeConfig, gradeIndex) => {
-      const gradeItems = items.filter((i) => i.student.groupGrade === gradeConfig.grade);
-      const gradeTotal = gradeItems.length;
-      const gVerified = gradeItems.filter((i) => i.issueType === 'verified_active').length;
-      const gMissing = gradeItems.filter((i) => i.issueType === 'missing').length;
-      const gNoWhatsapp = gradeItems.filter((i) => i.issueType === 'no_whatsapp' || i.issueType === 'invalid_format').length;
+  // Build discrete pages to ensure no student row is ever cut across pages
+  interface PagePayload {
+    pageNumber: number;
+    gradeConfig: (typeof SEQUENTIAL_GRADES)[number];
+    itemsChunk: PhoneAuditItem[];
+    startIndex: number;
+    totalGradeStudents: number;
+    isCoverPage: boolean;
+  }
 
-      return `
-        <!-- Grade Section Block -->
-        <div style="margin-top: ${gradeIndex === 0 ? '0' : '20px'}; page-break-inside: avoid; border: 1.5px solid #cbd5e1; border-radius: 12px; overflow: hidden; background: #ffffff; margin-bottom: 16px;">
-          
-          <!-- Grade Separator Header Banner (فاصل الصف الدراسي) -->
-          <div style="background: #0f172a; padding: 10px 16px; color: #ffffff; border-bottom: 3px solid #d4af37; display: flex; justify-content: space-between; align-items: center;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <span style="font-size: 20px;">${gradeConfig.icon}</span>
-              <div>
-                <div style="display: flex; align-items: center; gap: 8px;">
-                  <strong style="font-size: 15px; color: #fcf6ba;">
-                    ${gradeConfig.label}
-                  </strong>
-                  <span style="background: rgba(212, 175, 55, 0.25); color: #fef08a; padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;">
-                    ${gradeConfig.stage}
-                  </span>
-                </div>
-                <div style="font-size: 11px; color: #94a3b8; margin-top: 1px;">
-                  كشف تدقيق أرقام الهواتف والواتساب المعتمد لطلاب ${gradeConfig.grade}
-                </div>
-              </div>
-            </div>
+  const pages: PagePayload[] = [];
+  const ROWS_PER_COVER_PAGE = 10; // First page has large top stats banner
+  const ROWS_PER_SUBSEQUENT_PAGE = 15; // Regular pages have compact header
 
-            <!-- Grade Mini Stats -->
-            <div style="display: flex; align-items: center; gap: 6px;">
-              <div style="background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 6px; text-align: center;">
-                <span style="font-size: 10px; color: #cbd5e1;">الطلاب: </span>
-                <strong style="font-size: 12px; color: #ffffff;">${gradeTotal}</strong>
-              </div>
-              <div style="background: rgba(16, 185, 129, 0.2); padding: 4px 8px; border-radius: 6px; text-align: center;">
-                <span style="font-size: 10px; color: #6ee7b7;">واتساب: </span>
-                <strong style="font-size: 12px; color: #a7f3d0;">${gVerified}</strong>
-              </div>
-              <div style="background: rgba(239, 68, 68, 0.2); padding: 4px 8px; border-radius: 6px; text-align: center;">
-                <span style="font-size: 10px; color: #fca5a5;">مفقود: </span>
-                <strong style="font-size: 12px; color: #fecaca;">${gMissing + gNoWhatsapp}</strong>
-              </div>
-            </div>
-          </div>
+  let isFirstPageGlobal = true;
 
-          <!-- Grade Table Content -->
-          ${
-            gradeItems.length === 0
-              ? `
-            <div style="padding: 16px; text-align: center; color: #64748b; font-size: 12px; font-weight: bold; background: #f8fafc;">
-              ℹ️ لا يوجد طلاب مسجلين حالياً في ${gradeConfig.label}
-            </div>
-            `
-              : `
-            <table style="width: 100%; border-collapse: collapse; text-align: right; font-size: 11px;">
-              <thead>
-                <tr style="background: #f1f5f9; color: #1e293b; border-bottom: 2px solid #cbd5e1;">
-                  <th style="padding: 7px 6px; border: 1px solid #cbd5e1; text-align: center; width: 30px; font-weight: bold;">#</th>
-                  <th style="padding: 7px 6px; border: 1px solid #cbd5e1; text-align: center; width: 75px; font-weight: bold;">الباركود</th>
-                  <th style="padding: 7px 10px; border: 1px solid #cbd5e1; width: 200px; font-weight: bold;">اسم الطالب ثلاثي / رباعي</th>
-                  <th style="padding: 7px 8px; border: 1px solid #cbd5e1; width: 130px; font-weight: bold;">المجموعة والمواعيد</th>
-                  <th style="padding: 7px 6px; border: 1px solid #cbd5e1; text-align: center; width: 115px; font-weight: bold;">الرقم المسجل</th>
-                  <th style="padding: 7px 6px; border: 1px solid #cbd5e1; text-align: center; width: 90px; font-weight: bold;">الشبكة</th>
-                  <th style="padding: 7px 6px; border: 1px solid #cbd5e1; text-align: center; width: 120px; font-weight: bold;">حالة الواتساب</th>
-                  <th style="padding: 7px 10px; border: 1px solid #cbd5e1; font-weight: bold;">الملاحظات والتوصيات</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${gradeItems
-                  .map((item, idx) => {
-                    const s = item.student;
-                    const isEven = idx % 2 === 0;
-                    const rowBg = item.issueType === 'missing' ? '#fef2f2' : item.issueType === 'no_whatsapp' ? '#fffbeb' : isEven ? '#ffffff' : '#f8fafc';
-                    const phoneShow = item.parentPhoneRaw || item.phoneRaw || 'غير مسجل';
-                    const badgeHtml = getBadgeHtml(item.issueType);
+  for (const gradeConfig of gradesToRender) {
+    const gradeItems = items.filter((i) => i.student.groupGrade === gradeConfig.grade);
+    
+    if (gradeItems.length === 0) {
+      if (!isMultiGrade || uniqueGradesInItems.includes(gradeConfig.grade)) {
+        pages.push({
+          pageNumber: pages.length + 1,
+          gradeConfig,
+          itemsChunk: [],
+          startIndex: 0,
+          totalGradeStudents: 0,
+          isCoverPage: isFirstPageGlobal,
+        });
+        isFirstPageGlobal = false;
+      }
+      continue;
+    }
 
-                    return `
-                    <tr style="background: ${rowBg};">
-                      <td style="padding: 5px 4px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #64748b;">${idx + 1}</td>
-                      <td style="padding: 5px 4px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-weight: bold; color: #b45309;">${s.barcode}</td>
-                      <td style="padding: 5px 10px; border: 1px solid #cbd5e1; font-weight: bold; color: #0f172a;">${s.name}</td>
-                      <td style="padding: 5px 8px; border: 1px solid #cbd5e1; color: #475569; font-size: 10px;">${s.groupDays}</td>
-                      <td style="padding: 5px 4px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-weight: bold; direction: ltr; color: ${phoneShow === 'غير مسجل' ? '#ef4444' : '#0f172a'};">${phoneShow}</td>
-                      <td style="padding: 5px 4px; border: 1px solid #cbd5e1; text-align: center; color: #64748b; font-size: 10px;">${item.carrierName}</td>
-                      <td style="padding: 5px 4px; border: 1px solid #cbd5e1; text-align: center;">${badgeHtml}</td>
-                      <td style="padding: 5px 10px; border: 1px solid #cbd5e1; font-size: 10px; color: #475569;">${item.issueDescription}</td>
-                    </tr>
-                  `;
-                  })
-                  .join('')}
-              </tbody>
-            </table>
-          `
-          }
-        </div>
-      `;
-    })
-    .join('');
+    let cursor = 0;
+    while (cursor < gradeItems.length) {
+      const isCover = isFirstPageGlobal;
+      const pageSize = isCover ? ROWS_PER_COVER_PAGE : ROWS_PER_SUBSEQUENT_PAGE;
+      const chunk = gradeItems.slice(cursor, cursor + pageSize);
 
-  // Create an offscreen, highly optimized container at standard viewport coordinates
+      pages.push({
+        pageNumber: pages.length + 1,
+        gradeConfig,
+        itemsChunk: chunk,
+        startIndex: cursor,
+        totalGradeStudents: gradeItems.length,
+        isCoverPage: isCover,
+      });
+
+      cursor += pageSize;
+      isFirstPageGlobal = false;
+    }
+  }
+
+  if (pages.length === 0) {
+    alert('لا توجد بيانات مطابقة للتصدير');
+    return;
+  }
+
+  const totalPages = pages.length;
+
+  const pdf = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+  });
+
+  const pdfWidth = pdf.internal.pageSize.getWidth();
+  const pdfHeight = pdf.internal.pageSize.getHeight();
+
+  // Create temporary container for discrete page rendering
   const container = document.createElement('div');
-  container.id = 'pdf-render-container';
+  container.id = 'pdf-discrete-page-host';
   container.style.position = 'fixed';
   container.style.top = '0';
   container.style.left = '0';
   container.style.width = '1000px';
+  container.style.height = '707px';
   container.style.zIndex = '999999';
   container.style.opacity = '0';
   container.style.pointerEvents = 'none';
   container.style.backgroundColor = '#ffffff';
-  container.style.color = '#0f172a';
-  container.style.fontFamily = 'Cairo, system-ui, -apple-system, sans-serif';
-  container.style.direction = 'rtl';
-  container.style.padding = '16px';
-  container.style.boxSizing = 'border-box';
-
-  container.innerHTML = `
-    <div style="border: 2px solid #b38728; border-radius: 16px; overflow: hidden; background: #ffffff; padding-bottom: 8px;">
-      <!-- Master Cover & Document Header -->
-      <div style="background: #121926; padding: 18px 22px; color: #ffffff; border-bottom: 4px solid #d4af37;">
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div>
-            <div style="display: inline-block; padding: 2px 10px; border-radius: 12px; background: rgba(212, 175, 55, 0.2); border: 1px solid rgba(212, 175, 55, 0.4); color: #fcf6ba; font-size: 10px; font-weight: bold; margin-bottom: 4px;">
-              التقرير الشامل المعتمد للمتابعة الإدارية والاتصال
-            </div>
-            <h1 style="margin: 0; font-size: 20px; font-weight: 900; color: #fcf6ba;">
-              منظومة ${SCHOOL_TEACHER_NAME} التعليمية
-            </h1>
-            <h2 style="margin: 3px 0 0 0; font-size: 14px; font-weight: 700; color: #ffffff;">
-              كشف حصر وتدقيق أرقام هواتف الطلاب وحالة الواتساب
-            </h2>
-            <p style="margin: 3px 0 0 0; font-size: 11.5px; color: #cbd5e1;">
-              المرحلة / النطاق: <strong style="color: #fef08a;">${gradeTitle}</strong> | تاريخ الكشف: ${dateFormatted}
-            </p>
-          </div>
-          <div style="text-align: center; background: rgba(212, 175, 55, 0.15); border: 1.5px solid rgba(212, 175, 55, 0.4); padding: 8px 16px; border-radius: 10px;">
-            <div style="font-size: 10px; color: #fef08a; font-weight: bold;">إجمالي الطلاب</div>
-            <div style="font-size: 22px; font-weight: 900; color: #ffffff;">${total} طالب/ة</div>
-            <div style="font-size: 9px; color: #cbd5e1;">مرتبة تسلسلياً مع الفواصل</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Quick Global Stats Strip -->
-      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 10px 18px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;">
-        <div style="background: #ecfdf5; border: 1px solid #a7f3d0; padding: 6px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 9.5px; color: #047857; font-weight: bold;">واتساب مفحوص وشغال ✅</div>
-          <div style="font-size: 15px; font-weight: 900; color: #065f46;">${verifiedCount}</div>
-        </div>
-        <div style="background: #fef2f2; border: 1px solid #fecaca; padding: 6px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 9.5px; color: #b91c1c; font-weight: bold;">بدون رقم أصلًا (مفقود) 🚫</div>
-          <div style="font-size: 15px; font-weight: 900; color: #991b1b;">${missingCount}</div>
-        </div>
-        <div style="background: #fffbeb; border: 1px solid #fde68a; padding: 6px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 9.5px; color: #b45309; font-weight: bold;">ليس عليه واتساب / أرضي ❌</div>
-          <div style="font-size: 15px; font-weight: 900; color: #92400e;">${invalidOrNoCount}</div>
-        </div>
-        <div style="background: #f0f9ff; border: 1px solid #bae6fd; padding: 6px; border-radius: 6px; text-align: center;">
-          <div style="font-size: 9.5px; color: #0369a1; font-weight: bold;">بانتظار الفحص والتأكيد ⏳</div>
-          <div style="font-size: 15px; font-weight: 900; color: #075985;">${untestedCount}</div>
-        </div>
-      </div>
-
-      <!-- Main Sequential Grade Sections Container -->
-      <div style="padding: 14px 18px;">
-        ${gradeSectionsHtml}
-      </div>
-
-      <!-- Document Footer -->
-      <div style="margin: 12px 18px 4px 18px; padding: 8px 14px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #64748b;">
-        <div>تم الاستخراج والتدقيق آلياً بواسطة نظام المعلمة الإلكتروني الذكي | ${SCHOOL_TEACHER_NAME}</div>
-        <div style="font-weight: bold; color: #d4af37;">كشف تدقيق الهواتف الشامل المعتمد (من سنة 4 ابتدائي حتى 3 ثانوي)</div>
-      </div>
-    </div>
-  `;
-
   document.body.appendChild(container);
 
   try {
-    // Ultra fast rendering with scale: 1.25 (generates in ~500ms instead of minutes)
-    const canvas = await html2canvas(container, {
-      scale: 1.25,
-      useCORS: false,
-      allowTaint: true,
-      logging: false,
-      backgroundColor: '#ffffff',
-      windowWidth: 1000,
-    });
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
-    const pdf = new jsPDF({
-      orientation: 'landscape',
-      unit: 'mm',
-      format: 'a4',
-      compress: true,
-    });
-
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-
-    // Canvas aspect ratio calculations
-    const imgWidth = pdfWidth - 8;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-    if (imgHeight <= pdfHeight - 8) {
-      pdf.addImage(imgData, 'JPEG', 4, 4, imgWidth, imgHeight);
-    } else {
-      // Split into multiple pages seamlessly
-      let heightLeft = imgHeight;
-      let position = 4;
-
-      pdf.addImage(imgData, 'JPEG', 4, position, imgWidth, imgHeight);
-      heightLeft -= (pdfHeight - 8);
-
-      while (heightLeft > 0) {
-        position = heightLeft - imgHeight + 4;
-        pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 4, position, imgWidth, imgHeight);
-        heightLeft -= (pdfHeight - 8);
+    for (let pIdx = 0; pIdx < pages.length; pIdx++) {
+      const page = pages[pIdx];
+      if (onProgress) {
+        onProgress(`جاري إنشاء صفحة ${pIdx + 1} من ${totalPages}...`);
       }
+
+      const gradeTotal = page.totalGradeStudents;
+      const gVerified = items.filter((i) => i.student.groupGrade === page.gradeConfig.grade && i.issueType === 'verified_active').length;
+      const gIssues = items.filter((i) => i.student.groupGrade === page.gradeConfig.grade && (i.issueType === 'missing' || i.issueType === 'no_whatsapp' || i.issueType === 'invalid_format')).length;
+
+      let topHeaderHtml = '';
+      if (page.isCoverPage) {
+        topHeaderHtml = `
+          <!-- Master Header with Stats -->
+          <div style="background: #0f172a; padding: 10px 16px; border-radius: 8px; color: #ffffff; margin-bottom: 8px; border-bottom: 3px solid #d4af37;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <span style="background: rgba(212, 175, 55, 0.2); color: #fcf6ba; border: 1px solid rgba(212, 175, 55, 0.4); padding: 1px 8px; border-radius: 10px; font-size: 9px; font-weight: bold;">
+                    التقرير المعتمد للاتصال والمتابعة
+                  </span>
+                  <h1 style="margin: 0; font-size: 16px; font-weight: 900; color: #fcf6ba;">
+                    منظومة ${SCHOOL_TEACHER_NAME} التعليمية
+                  </h1>
+                </div>
+                <div style="font-size: 11px; color: #cbd5e1; margin-top: 2px;">
+                  كشف حصر وتدقيق أرقام هواتف الطلاب والواتساب | النطاق: <strong style="color: #fef08a;">${gradeTitle}</strong> (${dateFormatted})
+                </div>
+              </div>
+              <div style="text-align: center; background: rgba(212, 175, 55, 0.15); border: 1px solid rgba(212, 175, 55, 0.35); padding: 4px 12px; border-radius: 6px;">
+                <div style="font-size: 9px; color: #fef08a;">إجمالي الطلاب</div>
+                <div style="font-size: 16px; font-weight: 900; color: #ffffff;">${total} طالب/ة</div>
+              </div>
+            </div>
+
+            <!-- 4 Mini Global Stats -->
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px;">
+              <div style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 4px 8px; border-radius: 4px; text-align: center;">
+                <span style="font-size: 9px; color: #6ee7b7;">واتساب نشط: </span>
+                <strong style="font-size: 12px; color: #a7f3d0;">${verifiedCount}</strong>
+              </div>
+              <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); padding: 4px 8px; border-radius: 4px; text-align: center;">
+                <span style="font-size: 9px; color: #fca5a5;">بدون رقم: </span>
+                <strong style="font-size: 12px; color: #fecaca;">${missingCount}</strong>
+              </div>
+              <div style="background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); padding: 4px 8px; border-radius: 4px; text-align: center;">
+                <span style="font-size: 9px; color: #fde68a;">ليس عليه واتس / أرضي: </span>
+                <strong style="font-size: 12px; color: #fef08a;">${invalidOrNoCount}</strong>
+              </div>
+              <div style="background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); padding: 4px 8px; border-radius: 4px; text-align: center;">
+                <span style="font-size: 9px; color: #bae6fd;">بانتظار التأكيد: </span>
+                <strong style="font-size: 12px; color: #e0f2fe;">${untestedCount}</strong>
+              </div>
+            </div>
+          </div>
+        `;
+      } else {
+        topHeaderHtml = `
+          <!-- Compact Subsequent Header -->
+          <div style="background: #0f172a; padding: 6px 14px; border-radius: 6px; color: #ffffff; margin-bottom: 6px; border-bottom: 2px solid #d4af37; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <strong style="font-size: 13px; color: #fcf6ba;">منظومة ${SCHOOL_TEACHER_NAME} التعليمية</strong>
+              <span style="color: #94a3b8; font-size: 10px;">| كشف تدقيق أرقام الواتساب المعتمد</span>
+            </div>
+            <div style="font-size: 10px; color: #cbd5e1;">تاريخ الاستخراج: ${dateFormatted}</div>
+          </div>
+        `;
+      }
+
+      // Grade Banner
+      const gradeBannerHtml = `
+        <div style="background: #1e293b; padding: 6px 12px; border-radius: 6px; color: #ffffff; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 15px;">${page.gradeConfig.icon}</span>
+            <strong style="font-size: 13px; color: #fcf6ba;">${page.gradeConfig.label}</strong>
+            <span style="background: rgba(212, 175, 55, 0.25); color: #fef08a; padding: 1px 6px; border-radius: 8px; font-size: 9.5px;">
+              ${page.gradeConfig.stage}
+            </span>
+          </div>
+          <div style="display: flex; gap: 8px; font-size: 10px;">
+            <span style="color: #cbd5e1;">إجمالي طلاب الصف: <strong style="color: #fff;">${gradeTotal}</strong></span>
+            <span style="color: #6ee7b7;">واتساب شغال: <strong style="color: #a7f3d0;">${gVerified}</strong></span>
+            <span style="color: #fca5a5;">مفقود/أرضي: <strong style="color: #fecaca;">${gIssues}</strong></span>
+          </div>
+        </div>
+      `;
+
+      // Table Content
+      let tableRowsHtml = '';
+      if (page.itemsChunk.length === 0) {
+        tableRowsHtml = `
+          <tr>
+            <td colspan="8" style="padding: 24px; text-align: center; color: #64748b; font-size: 12px; font-weight: bold; background: #f8fafc;">
+              ℹ️ لا يوجد طلاب مسجلين في هذا الصف
+            </td>
+          </tr>
+        `;
+      } else {
+        tableRowsHtml = page.itemsChunk
+          .map((item, localIdx) => {
+            const globalRowIdx = page.startIndex + localIdx + 1;
+            const s = item.student;
+            const isEven = localIdx % 2 === 0;
+            const rowBg = item.issueType === 'missing' ? '#fef2f2' : item.issueType === 'no_whatsapp' ? '#fffbeb' : isEven ? '#ffffff' : '#f8fafc';
+            const phoneShow = item.parentPhoneRaw || item.phoneRaw || 'غير مسجل';
+            const badgeHtml = getBadgeHtml(item.issueType);
+
+            return `
+              <tr style="background: ${rowBg}; height: 26px;">
+                <td style="padding: 3px 4px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold; color: #64748b; font-size: 10px;">${globalRowIdx}</td>
+                <td style="padding: 3px 4px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-weight: bold; color: #b45309; font-size: 10px;">${s.barcode}</td>
+                <td style="padding: 3px 8px; border: 1px solid #cbd5e1; font-weight: bold; color: #0f172a; font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px;">${s.name}</td>
+                <td style="padding: 3px 6px; border: 1px solid #cbd5e1; color: #475569; font-size: 9.5px;">${s.groupDays}</td>
+                <td style="padding: 3px 4px; border: 1px solid #cbd5e1; text-align: center; font-family: monospace; font-weight: bold; direction: ltr; font-size: 10px; color: ${phoneShow === 'غير مسجل' ? '#ef4444' : '#0f172a'};">${phoneShow}</td>
+                <td style="padding: 3px 4px; border: 1px solid #cbd5e1; text-align: center; color: #64748b; font-size: 9.5px;">${item.carrierName}</td>
+                <td style="padding: 3px 4px; border: 1px solid #cbd5e1; text-align: center;">${badgeHtml}</td>
+                <td style="padding: 3px 8px; border: 1px solid #cbd5e1; font-size: 9.5px; color: #475569;">${item.issueDescription}</td>
+              </tr>
+            `;
+          })
+          .join('');
+      }
+
+      container.innerHTML = `
+        <div style="width: 1000px; height: 707px; box-sizing: border-box; padding: 12px; background: #ffffff; color: #0f172a; font-family: Cairo, system-ui, -apple-system, sans-serif; direction: rtl; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            ${topHeaderHtml}
+            ${gradeBannerHtml}
+
+            <!-- Table with bounded rows -->
+            <table style="width: 100%; border-collapse: collapse; text-align: right;">
+              <thead>
+                <tr style="background: #f1f5f9; color: #1e293b; border-bottom: 2px solid #cbd5e1; height: 26px;">
+                  <th style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; width: 28px; font-weight: bold; font-size: 10px;">#</th>
+                  <th style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; width: 70px; font-weight: bold; font-size: 10px;">الباركود</th>
+                  <th style="padding: 4px 8px; border: 1px solid #cbd5e1; width: 190px; font-weight: bold; font-size: 10.5px;">اسم الطالب</th>
+                  <th style="padding: 4px 6px; border: 1px solid #cbd5e1; width: 120px; font-weight: bold; font-size: 10px;">المجموعة</th>
+                  <th style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; width: 110px; font-weight: bold; font-size: 10px;">الرقم المسجل</th>
+                  <th style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; width: 85px; font-weight: bold; font-size: 10px;">الشبكة</th>
+                  <th style="padding: 4px; border: 1px solid #cbd5e1; text-align: center; width: 115px; font-weight: bold; font-size: 10px;">حالة الواتساب</th>
+                  <th style="padding: 4px 8px; border: 1px solid #cbd5e1; font-weight: bold; font-size: 10px;">الملاحظات والتوصيات</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tableRowsHtml}
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Page Footer -->
+          <div style="padding: 4px 10px; background: #f8fafc; border-top: 1px solid #e2e8f0; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; font-size: 9.5px; color: #64748b; margin-top: auto;">
+            <div>منظومة ${SCHOOL_TEACHER_NAME} التعليمية | كشف تدقيق هواتف وواتساب الطلاب المعتمد</div>
+            <div style="font-weight: bold; color: #0f172a;">
+              صفحة (${pIdx + 1}) من إجمالي (${totalPages})
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Fast single-page screenshot in ~60ms
+      const canvas = await html2canvas(container, {
+        scale: 1.25,
+        useCORS: false,
+        allowTaint: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+        windowWidth: 1000,
+        windowHeight: 707,
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.92);
+
+      if (pIdx > 0) {
+        pdf.addPage();
+      }
+
+      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight, undefined, 'FAST');
     }
 
     const cleanTitle = gradeTitle.replace(/[\/\s\\:*?"<>|]+/g, '_');
@@ -532,7 +566,7 @@ export async function exportPhoneAuditToPDF(
 
 /**
  * Instant Native Print / Save to PDF View (0.01 seconds speed)
- * Opens an isolated print window formatted cleanly for direct printing or saving as PDF
+ * Guaranteed zero row cuts with strict CSS break-inside: avoid
  */
 export function openInstantPrintView(
   items: PhoneAuditItem[],
@@ -560,9 +594,9 @@ export function openInstantPrintView(
     .map((gradeConfig) => {
       const gradeItems = items.filter((i) => i.student.groupGrade === gradeConfig.grade);
       return `
-        <div style="margin-top: 16px; page-break-inside: avoid; border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden; margin-bottom: 14px;">
-          <div style="background: #0f172a; color: #fff; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center;">
-            <div style="font-size: 14px; font-weight: bold;">
+        <div class="grade-block" style="margin-top: 14px; page-break-inside: avoid; break-inside: avoid; border: 1.5px solid #0f172a; border-radius: 8px; overflow: hidden; margin-bottom: 12px;">
+          <div style="background: #0f172a; color: #fff; padding: 6px 12px; display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-size: 13px; font-weight: bold;">
               ${gradeConfig.icon} ${gradeConfig.label} - <span style="color: #fef08a; font-size: 11px;">${gradeConfig.stage}</span>
             </div>
             <div style="font-size: 11px; color: #cbd5e1;">إجمالي طلاب الصف: ${gradeItems.length}</div>
@@ -570,14 +604,14 @@ export function openInstantPrintView(
           <table style="width: 100%; border-collapse: collapse; font-size: 11px; text-align: right;">
             <thead>
               <tr style="background: #f1f5f9; border-bottom: 1.5px solid #cbd5e1;">
-                <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: center; width: 30px;">#</th>
-                <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: center; width: 75px;">الباركود</th>
-                <th style="padding: 6px 10px; border: 1px solid #cbd5e1; width: 210px;">اسم الطالب</th>
-                <th style="padding: 6px 8px; border: 1px solid #cbd5e1; width: 140px;">المجموعة</th>
-                <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: center; width: 115px;">الرقم المسجل</th>
-                <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: center; width: 85px;">الشبكة</th>
-                <th style="padding: 6px; border: 1px solid #cbd5e1; text-align: center; width: 120px;">حالة الواتساب</th>
-                <th style="padding: 6px 10px; border: 1px solid #cbd5e1;">الملاحظات</th>
+                <th style="padding: 5px; border: 1px solid #cbd5e1; text-align: center; width: 30px;">#</th>
+                <th style="padding: 5px; border: 1px solid #cbd5e1; text-align: center; width: 75px;">الباركود</th>
+                <th style="padding: 5px 10px; border: 1px solid #cbd5e1; width: 210px;">اسم الطالب</th>
+                <th style="padding: 5px 8px; border: 1px solid #cbd5e1; width: 140px;">المجموعة</th>
+                <th style="padding: 5px; border: 1px solid #cbd5e1; text-align: center; width: 115px;">الرقم المسجل</th>
+                <th style="padding: 5px; border: 1px solid #cbd5e1; text-align: center; width: 85px;">الشبكة</th>
+                <th style="padding: 5px; border: 1px solid #cbd5e1; text-align: center; width: 120px;">حالة الواتساب</th>
+                <th style="padding: 5px 10px; border: 1px solid #cbd5e1;">الملاحظات</th>
               </tr>
             </thead>
             <tbody>
@@ -589,7 +623,7 @@ export function openInstantPrintView(
                         const s = item.student;
                         const phoneShow = item.parentPhoneRaw || item.phoneRaw || 'غير مسجل';
                         return `
-                          <tr style="border-bottom: 1px solid #e2e8f0;">
+                          <tr style="page-break-inside: avoid; break-inside: avoid; border-bottom: 1px solid #e2e8f0;">
                             <td style="padding: 5px; border: 1px solid #cbd5e1; text-align: center;">${idx + 1}</td>
                             <td style="padding: 5px; border: 1px solid #cbd5e1; text-align: center; font-weight: bold;">${s.barcode}</td>
                             <td style="padding: 5px 10px; border: 1px solid #cbd5e1; font-weight: bold;">${s.name}</td>
@@ -623,7 +657,15 @@ export function openInstantPrintView(
       <meta charset="UTF-8">
       <title>كشف تدقيق أرقام الواتساب - ${gradeTitle}</title>
       <style>
-        body { font-family: Cairo, Arial, sans-serif; direction: rtl; padding: 20px; color: #0f172a; margin: 0; }
+        @page {
+          size: A4 landscape;
+          margin: 8mm;
+        }
+        body { font-family: Cairo, Arial, sans-serif; direction: rtl; padding: 12px; color: #0f172a; margin: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+        thead { display: table-header-group; }
+        .grade-block { page-break-inside: avoid; break-inside: avoid; }
         @media print {
           body { padding: 0; }
           button { display: none !important; }
@@ -631,18 +673,18 @@ export function openInstantPrintView(
       </style>
     </head>
     <body>
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 2px solid #0f172a; padding-bottom: 10px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; border-bottom: 2px solid #0f172a; padding-bottom: 8px;">
         <div>
-          <h2 style="margin: 0; font-size: 18px; color: #0f172a;">منظومة ${SCHOOL_TEACHER_NAME} التعليمية</h2>
-          <div style="font-size: 13px; color: #475569; margin-top: 4px;">كشف تدقيق أرقام الهواتف والواتساب | ${gradeTitle} (${dateFormatted})</div>
+          <h2 style="margin: 0; font-size: 16px; color: #0f172a;">منظومة ${SCHOOL_TEACHER_NAME} التعليمية</h2>
+          <div style="font-size: 12px; color: #475569; margin-top: 2px;">كشف تدقيق أرقام الهواتف والواتساب | ${gradeTitle} (${dateFormatted})</div>
         </div>
         <div style="text-align: left;">
-          <button onclick="window.print()" style="background: #0f172a; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; font-family: inherit;">🖨️ طباعة الآن / حفظ PDF</button>
+          <button onclick="window.print()" style="background: #0f172a; color: #fff; border: none; padding: 6px 14px; border-radius: 6px; font-weight: bold; cursor: pointer; font-family: inherit;">🖨️ طباعة الآن / حفظ PDF</button>
         </div>
       </div>
       ${gradeSectionsHtml}
       <script>
-        setTimeout(() => { window.print(); }, 400);
+        setTimeout(() => { window.print(); }, 300);
       </script>
     </body>
     </html>

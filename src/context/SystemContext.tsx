@@ -739,6 +739,7 @@ interface SystemContextType {
 
   // Student & Parent Account Management (Teacher only)
   updateStudentAccount: (barcode: string, updated: Partial<StudentData>) => Promise<{ success: boolean; message: string }>;
+  updateMultipleStudentAccounts: (updates: { barcode: string; data: Partial<StudentData> }[]) => Promise<{ success: boolean; message: string }>;
   addStudentAccount: (student: Omit<StudentData, 'points' | 'totalAttendanceDays' | 'totalAbsentDays' | 'totalExamScores'>) => Promise<{ success: boolean; message: string }>;
   deleteStudentAccount: (barcode: string) => Promise<{ success: boolean; message: string }>;
   toggleStudentStatus: (barcode: string) => Promise<{ success: boolean; message: string }>;
@@ -1467,6 +1468,20 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [students, persistState]
   );
 
+  const updateMultipleStudentAccounts = useCallback(
+    async (updates: { barcode: string; data: Partial<StudentData> }[]) => {
+      const updateMap = new Map(updates.map((u) => [u.barcode, u.data]));
+      const nextStudents = students.map((s) => {
+        const patch = updateMap.get(s.barcode);
+        return patch ? { ...s, ...patch } : s;
+      });
+      setStudents(nextStudents);
+      await persistState(nextStudents);
+      return { success: true, message: `تم تحديث ${updates.length} حساب طالب بنجاح!` };
+    },
+    [students, persistState]
+  );
+
   const addStudentAccount = useCallback(
     async (student: Omit<StudentData, 'points' | 'totalAttendanceDays' | 'totalAbsentDays' | 'totalExamScores'>) => {
       const cleanBarcode = normalizeDigits(student.barcode.trim());
@@ -1667,6 +1682,7 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteDirectMessage,
         markMessagesAsRead,
         updateStudentAccount,
+        updateMultipleStudentAccounts,
         addStudentAccount,
         deleteStudentAccount,
         toggleStudentStatus,

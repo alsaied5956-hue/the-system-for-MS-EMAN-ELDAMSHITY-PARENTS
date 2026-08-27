@@ -44,7 +44,7 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
   onClose,
   onEditStudent,
 }) => {
-  const { students, updateStudentAccount, theme } = useSystem();
+  const { students, updateStudentAccount, updateMultipleStudentAccounts, theme } = useSystem();
   const isDark = theme === 'dark';
 
   // Filters
@@ -52,8 +52,15 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'issues_only' | 'missing_only' | 'no_whatsapp' | 'verified_only' | 'untested_only'>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [isExporting, setIsExporting] = useState<'excel' | 'pdf' | null>(null);
+  const [pdfProgressMessage, setPdfProgressMessage] = useState<string | null>(null);
   const [activeTestingBarcode, setActiveTestingBarcode] = useState<string | null>(null);
   const [bulkCheckProgress, setBulkCheckProgress] = useState<string | null>(null);
+  const [batchSummaryResult, setBatchSummaryResult] = useState<{
+    testedCount: number;
+    missingCount: number;
+    noWhatsAppCount: number;
+    verifiedCount: number;
+  } | null>(null);
 
   // Analyze all students
   const auditedAllStudents: PhoneAuditItem[] = useMemo(() => {
@@ -184,13 +191,19 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
     }
 
     setIsExporting('pdf');
+    setPdfProgressMessage('⚡ جاري التحضير...');
     try {
-      await exportPhoneAuditToPDF(itemsToExport, getGradeExportTitle(targetGradeKey));
+      await exportPhoneAuditToPDF(
+        itemsToExport,
+        getGradeExportTitle(targetGradeKey),
+        (msg) => setPdfProgressMessage(msg)
+      );
     } catch (err) {
       console.error(err);
       alert('حدث خطأ أثناء إنشاء ملف PDF، يرجى المحاولة مرة أخرى.');
     } finally {
       setIsExporting(null);
+      setPdfProgressMessage(null);
     }
   };
 
@@ -264,58 +277,76 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
     let verifiedCountLocal = 0;
     const today = new Date().toISOString().split('T')[0];
 
+    const updatesToApply: { barcode: string; data: Partial<StudentData> }[] = [];
+
     for (const item of auditedAllStudents) {
       const s = item.student;
       const phone = (s.parentPhone || s.phone || '').trim();
 
       if (!phone || item.issueType === 'missing') {
         // Missing completely
-        await updateStudentAccount(s.barcode, {
-          whatsappStatus: 'missing',
-          whatsappTestedDate: today,
-          whatsappNotes: 'لا يوجد أي رقم هاتف مسجل في استمارة الطالب',
+        updatesToApply.push({
+          barcode: s.barcode,
+          data: {
+            whatsappStatus: 'missing',
+            whatsappTestedDate: today,
+            whatsappNotes: 'لا يوجد أي رقم هاتف مسجل في استمارة الطالب',
+          },
         });
         missingCountLocal++;
-      } else if (item.issueType === 'invalid_format') {
+      } else if (item.issueType === 'invalid_format' || item.issueType === 'no_whatsapp') {
         // Invalid landline or short digits
-        await updateStudentAccount(s.barcode, {
-          whatsappStatus: 'no_whatsapp',
-          whatsappTestedDate: today,
-          whatsappNotes: 'الرقم غير صالح أو هاتف أرضي ثابت لا يدعم الواتساب',
+        updatesToApply.push({
+          barcode: s.barcode,
+          data: {
+            whatsappStatus: 'no_whatsapp',
+            whatsappTestedDate: today,
+            whatsappNotes: 'الرقم غير صالح أو هاتف أرضي ثابت لا يدعم الواتساب',
+          },
         });
         noWhatsAppCountLocal++;
-      } else if (item.hasWhatsAppReadyNumber && (s.whatsappStatus === 'untested' || !s.whatsappStatus)) {
+      } else {
         // Valid Egyptian mobile number
-        await updateStudentAccount(s.barcode, {
-          whatsappStatus: 'verified_active',
-          whatsappTestedDate: today,
-          whatsappNotes: `رقم محمول مصري نظامي نشط (${item.carrierName})`,
+        updatesToApply.push({
+          barcode: s.barcode,
+          data: {
+            whatsappStatus: 'verified_active',
+            whatsappTestedDate: today,
+            whatsappNotes: `رقم محمول مصري نظامي نشط (${item.carrierName || 'مصر'})`,
+          },
         });
         verifiedCountLocal++;
       }
       testedCount++;
     }
 
-    setBulkCheckProgress(null);
-    alert(
-      `تم الانتهاء من الفحص الشامل بنجاح! ⚡\n\n` +
-      `إجمالي الطلاب الذين تم فحصهم: ${testedCount}\n` +
-      `❌ ليس لديهم واتساب نهائياً (مفقود + أرضي/غير صالح): ${missingCountLocal + noWhatsAppCountLocal} طالب\n` +
-      `  • أرقام غير مكتوبة أصلًا: ${missingCountLocal} طالب\n` +
-      `  • أرقام أرضية/غير صالحة: ${noWhatsAppCountLocal} طالب\n` +
-      `✅ أرقام مفحوصة ولديها واتساب نشط: ${verifiedCountLocal} طالب`
-    );
+    try {
+      if (updatesToApply.length > 0) {
+        await updateMultipleStudentAccounts(updatesToApply);
+      }
+      setBatchSummaryResult({
+        testedCount,
+        missingCount: missingCountLocal,
+        noWhatsAppCount: noWhatsAppCountLocal,
+        verifiedCount: verifiedCountLocal,
+      });
+    } catch (err) {
+      console.error('Batch check error:', err);
+    } finally {
+      setBulkCheckProgress(null);
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-fade-in">
-      <div
-        className="w-full max-w-6xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col max-h-[94vh]"
-        style={{
-          backgroundColor: isDark ? 'rgba(15, 23, 42, 0.98)' : '#ffffff',
-          borderColor: isDark ? 'rgba(212, 175, 55, 0.4)' : 'rgba(179, 135, 40, 0.4)',
-        }}
-      >
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/85 backdrop-blur-md p-2 sm:p-4 md:p-6 animate-fade-in">
+      <div className="min-h-full flex items-start justify-center py-2 sm:py-4">
+        <div
+          className="w-full max-w-7xl rounded-3xl border shadow-2xl overflow-hidden flex flex-col my-auto"
+          style={{
+            backgroundColor: isDark ? 'rgba(15, 23, 42, 0.98)' : '#ffffff',
+            borderColor: isDark ? 'rgba(212, 175, 55, 0.4)' : 'rgba(179, 135, 40, 0.4)',
+          }}
+        >
         {/* ========================================================= */}
         {/* 1. Modal Top Bar */}
         {/* ========================================================= */}
@@ -382,7 +413,7 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
               title="تحميل ملف PDF فوري لكافة الصفوف من 4 ابتدائي حتى 3 ثانوي بفواصل لكل صف"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>{isExporting === 'pdf' ? '⚡ جاري التجهيز...' : 'تحميل PDF لكل الصفوف ⚡'}</span>
+              <span>{isExporting === 'pdf' ? (pdfProgressMessage || '⚡ جاري التجهيز...') : 'تحميل PDF لكل الصفوف ⚡'}</span>
             </button>
 
             {/* Instant Print / Save PDF Window Button */}
@@ -405,6 +436,43 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Bulk Check Success Summary Banner */}
+        {batchSummaryResult && (
+          <div className="mx-4 my-3 p-4 rounded-2xl bg-gradient-to-r from-purple-950/80 via-slate-900 to-purple-950/80 border border-purple-500/40 text-white shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/40 flex items-center justify-center text-purple-300 shrink-0">
+                <Zap className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm font-black text-amber-300">تم اكتمال الفحص الآلي الشامل لكافة الصفوف بنجاح ⚡</h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/30 text-purple-200">
+                    تم فحص {batchSummaryResult.testedCount} طالب
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 mt-2 flex-wrap text-xs font-semibold">
+                  <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    ✅ {batchSummaryResult.verifiedCount} أرقام واتساب نظامية نشطة
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                    ❌ {batchSummaryResult.missingCount} أرقام غير مسجلة أصلًا
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    ⚠️ {batchSummaryResult.noWhatsAppCount} أرقام أرضية/غير صالحة
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setBatchSummaryResult(null)}
+              className="px-3 py-1.5 rounded-xl bg-purple-900/60 hover:bg-purple-800 text-purple-200 border border-purple-700/50 text-xs font-bold shrink-0 self-end sm:self-auto cursor-pointer"
+            >
+              إغلاق الإشعار ✕
+            </button>
+          </div>
+        )}
 
         {/* ========================================================= */}
         {/* 2. Grade & Stage Navigation Bar (All Grades 4th Primary - 3rd Secondary) */}
@@ -671,7 +739,7 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
         {/* ========================================================= */}
         {/* 5. Live Interactive Table with WhatsApp Checker */}
         {/* ========================================================= */}
-        <div className="flex-1 overflow-y-auto p-3 sm:p-4">
+        <div className="p-3 sm:p-5">
           {displayItems.length === 0 ? (
             <div className="p-12 text-center border border-dashed rounded-3xl space-y-3" style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}>
               <CheckCircle2 className="w-12 h-12 mx-auto text-emerald-400/80" />
@@ -972,11 +1040,20 @@ export const PhoneAuditModal: React.FC<PhoneAuditModalProps> = ({
               className="px-4 py-2 rounded-xl text-xs font-black btn-gold text-slate-950 flex items-center gap-1.5 transition-all shadow-md cursor-pointer disabled:opacity-50"
             >
               <FileText className="w-4 h-4" />
-              <span>{isExporting === 'pdf' ? 'جاري تحضير PDF...' : 'تحميل PDF فوراً 📄'}</span>
+              <span>{isExporting === 'pdf' ? (pdfProgressMessage || 'جاري تحضير PDF...') : 'تحميل PDF فوراً 📄'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3.5 py-2 rounded-xl text-xs font-bold border border-slate-700 bg-slate-800 text-slate-300 hover:text-white transition-all cursor-pointer"
+            >
+              إغلاق النافذة ✕
             </button>
           </div>
         </div>
       </div>
     </div>
-  );
+  </div>
+);
 };
