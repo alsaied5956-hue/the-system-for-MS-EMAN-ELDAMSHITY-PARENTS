@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-dark: #070a11;
+    --card-bg: rgba(18, 25, 38, 0.88);
+    --card-border: rgba(212, 175, 55, 0.22);
+    --primary-gold: #e6c667;
+    --gold-gradient: linear-gradient(135deg, #bf953f 0%, #fcf6ba 25%, #b38728 50%, #fbf5b7 75%, #aa771c 100%);
+    --silver-gradient: linear-gradient(135deg, #94a3b8 0%, #f1f5f9 50%, #64748b 100%);
+    --accent-cyan: #00e5ff;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --input-bg: rgba(9, 14, 23, 0.95);
+    --table-header-bg: rgba(15, 23, 42, 0.95);
+    --hover-bg: rgba(212, 175, 55, 0.07);
+    --modal-bg: rgba(3, 7, 18, 0.85);
+    --glass-shadow: 0 12px 36px 0 rgba(0, 0, 0, 0.5);
+  }
+
+  [data-theme="light"] {
+    --bg-dark: #f4f6f9;
+    --card-bg: rgba(255, 255, 255, 0.95);
+    --card-border: rgba(179, 135, 40, 0.25);
+    --primary-gold: #a3771e;
+    --gold-gradient: linear-gradient(135deg, #b38728 0%, #d4af37 50%, #966c15 100%);
+    --silver-gradient: linear-gradient(135deg, #64748b 0%, #cbd5e1 50%, #475569 100%);
+    --accent-cyan: #0284c7;
+    --text-main: #0f172a;
+    --text-muted: #64748b;
+    --input-bg: #ffffff;
+    --table-header-bg: #f8fafc;
+    --hover-bg: rgba(179, 135, 40, 0.08);
+    --modal-bg: rgba(15, 23, 42, 0.65);
+    --glass-shadow: 0 8px 30px 0 rgba(0, 0, 0, 0.08);
+  }
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: 'Tajawal', system-ui, -apple-system, sans-serif;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+/* Custom Gold Button */
+.btn-gold {
+  background: var(--gold-gradient);
+  color: #000;
+  font-weight: 800;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 18px rgba(212, 175, 55, 0.25);
+}
+.btn-gold:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(212, 175, 55, 0.4);
+}
+
+.gold-text {
+  color: var(--primary-gold);
+}
+
+.gold-border {
+  border-color: var(--card-border);
+}
+
+/* Print layout optimization */
+@media print {
+  header, nav, aside, .no-print, button {
+    display: none !important;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+}

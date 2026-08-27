@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#bf953f" />
+      <stop offset="25%" stop-color="#fcf6ba" />
+      <stop offset="50%" stop-color="#b38728" />
+      <stop offset="75%" stop-color="#fbf5b7" />
+      <stop offset="100%" stop-color="#aa771c" />
+    </linearGradient>
+    <radialGradient id="darkBg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1e293b" />
+      <stop offset="100%" stop-color="#070a11" />
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#darkBg)" stroke="url(#gold)" stroke-width="16" />
+  <!-- Math & Graduation Golden Symbol -->
+  <g transform="translate(256, 256)">
+    <!-- Graduation Cap -->
+    <polygon points="0,-100 160,-20 0,60 -160,-20" fill="url(#gold)" stroke="#070a11" stroke-width="6" />
+    <path d="M-100,5 C-100,75 100,75 100,5 L100,60 C100,120 -100,120 -100,60 Z" fill="url(#gold)" />
+    <!-- Tassel -->
+    <path d="M130,-5 L150,70 L140,80 L160,80 Z" fill="#fcf6ba" />
+    <!-- Golden Math Sigma & Pi & Infinity symbols -->
+    <text x="0" y="160" font-family="'Cairo', sans-serif" font-weight="900" font-size="54" fill="url(#gold)" text-anchor="middle">مس إيمان</text>
+  </g>
+</svg>

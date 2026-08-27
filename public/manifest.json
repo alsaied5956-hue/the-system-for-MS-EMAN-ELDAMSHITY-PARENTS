@@ -1,0 +1,26 @@
+{
+  "name": "منظومة مس إيمان الدمشيتي - بوابة الطلاب وأولياء الأمور",
+  "short_name": "مس إيمان للرياضيات",
+  "description": "تطبيق وبوابة أولياء الأمور والطلاب لمتابعة الحضور والدرجات والإشعارات الفورية مع خبيرة الرياضيات مس إيمان الدمشيتي",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070a11",
+  "theme_color": "#b38728",
+  "orientation": "portrait-primary",
+  "dir": "rtl",
+  "lang": "ar",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
