@@ -39,7 +39,12 @@ import {
   CalendarDays,
   Check,
   X,
+  Trophy,
+  Download,
+  FileText,
+  Medal,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 import { requestBrowserNotificationPermission, soundEngine } from '../../utils/notificationEngine';
 
 export const ParentPortal: React.FC = () => {
@@ -55,12 +60,14 @@ export const ParentPortal: React.FC = () => {
     attendanceHistory,
     payments,
     groupPrices,
+    sortedStudents,
   } = useSystem();
 
   const isDark = theme === 'dark';
   const [inquiryText, setInquiryText] = useState('');
   const [inquiryFeedback, setInquiryFeedback] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+  const [leaderboardFilter, setLeaderboardFilter] = useState<'student_grade' | 'all'>('student_grade');
 
   // Attendance Month & Group Schedule State
   const [attendanceMonth, setAttendanceMonth] = useState(() => {
@@ -102,6 +109,132 @@ export const ParentPortal: React.FC = () => {
   const studentMessages = directMessages.filter(
     (m) => m.studentBarcode === currentStudent.barcode
   );
+
+  const handleDownloadStudentReport = () => {
+    if (!currentStudent) return;
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const totalDays = (currentStudent.totalAttendanceDays || 0) + (currentStudent.totalAbsentDays || 0);
+    const attendanceRate = totalDays > 0 ? Math.round(((currentStudent.totalAttendanceDays || 0) / totalDays) * 100) : 100;
+    const avgScore =
+      currentStudent.totalExamScores && currentStudent.totalExamScores.length > 0
+        ? Math.round(currentStudent.totalExamScores.reduce((a, b) => a + b, 0) / currentStudent.totalExamScores.length)
+        : 0;
+
+    // Border
+    doc.setDrawColor(212, 175, 55);
+    doc.setLineWidth(1.5);
+    doc.rect(10, 10, 190, 277);
+    doc.setLineWidth(0.5);
+    doc.rect(13, 13, 184, 271);
+
+    // Header banner
+    doc.setFillColor(245, 240, 225);
+    doc.rect(14, 14, 182, 32, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(180, 130, 20);
+    doc.text('ACADEMIC PERFORMANCE REPORT CARD', 105, 27, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setTextColor(60, 60, 60);
+    doc.text(`Teacher: ${SCHOOL_TEACHER_NAME} - Mathematics Center`, 105, 36, { align: 'center' });
+    doc.text(`Date Issued: ${new Date().toLocaleDateString('en-US')}`, 105, 42, { align: 'center' });
+
+    // Student summary box
+    doc.setFillColor(250, 250, 250);
+    doc.setDrawColor(200, 200, 200);
+    doc.roundedRect(20, 52, 170, 36, 3, 3, 'FD');
+
+    doc.setFontSize(14);
+    doc.setTextColor(20, 20, 20);
+    doc.text(`Student: ${currentStudent.name}`, 25, 62);
+
+    doc.setFontSize(10);
+    doc.setTextColor(80, 80, 80);
+    doc.text(`Barcode ID: ${currentStudent.barcode}`, 25, 71);
+    doc.text(`Grade Level: ${currentStudent.groupGrade}`, 25, 80);
+    doc.text(`Group Days: ${currentStudent.groupDays}`, 110, 71);
+    doc.text(`Parent Contact: ${currentStudent.parentPhone || currentStudent.phone || 'N/A'}`, 110, 80);
+
+    // Metrics grid
+    const metrics = [
+      { label: 'Excellence Points', value: `${currentStudent.points || 0} Stars`, x: 20, y: 96 },
+      { label: 'Attendance Rate', value: `${attendanceRate}% (${currentStudent.totalAttendanceDays || 0} Days)`, x: 108, y: 96 },
+      { label: 'Exam Average', value: `${avgScore}%`, x: 20, y: 122 },
+      { label: 'Last Exam Title', value: currentStudent.lastExamTitle || 'Regular Quiz', x: 108, y: 122 },
+      { label: 'Last Exam Score', value: currentStudent.lastExamScore || 'Pending', x: 20, y: 148 },
+      {
+        label: 'Homework Status',
+        value:
+          currentStudent.lastHomeworkStatus === 'done_full'
+            ? 'Fully Done (Excellent)'
+            : currentStudent.lastHomeworkStatus === 'done_partial'
+            ? 'Partially Done (Attention)'
+            : currentStudent.lastHomeworkStatus === 'not_done'
+            ? 'Missing / Incomplete'
+            : 'Pending evaluation',
+        x: 108,
+        y: 148,
+      },
+    ];
+
+    metrics.forEach((m) => {
+      doc.setFillColor(248, 249, 250);
+      doc.setDrawColor(220, 220, 220);
+      doc.roundedRect(m.x, m.y, 82, 20, 2, 2, 'FD');
+
+      doc.setFontSize(9);
+      doc.setTextColor(100, 100, 100);
+      doc.text(m.label, m.x + 5, m.y + 7);
+
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 30, 30);
+      doc.text(m.value, m.x + 5, m.y + 15);
+    });
+
+    // Notes Box
+    doc.setFillColor(255, 252, 240);
+    doc.setDrawColor(212, 175, 55);
+    doc.roundedRect(20, 178, 170, 48, 3, 3, 'FD');
+
+    doc.setFontSize(11);
+    doc.setTextColor(180, 130, 20);
+    doc.text('Teacher Evaluation & Instructions:', 25, 188);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(50, 50, 50);
+    const hwNote = currentStudent.lastHomeworkNote ? `Homework Note: ${currentStudent.lastHomeworkNote}` : 'Continuous follow-up is appreciated.';
+    doc.text(`1. ${hwNote}`, 25, 198);
+    doc.text('2. Please maintain regular attendance and solve all mathematics homework exercises.', 25, 206);
+    doc.text('3. For detailed reports and online follow-up, visit the student portal anytime.', 25, 214);
+
+    // Official Footer & Signatures
+    doc.setDrawColor(180, 180, 180);
+    doc.line(25, 255, 75, 255);
+    doc.line(135, 255, 185, 255);
+
+    doc.setFontSize(9);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Parent Signature', 35, 261);
+    doc.text('Center Director Signature', 140, 261);
+
+    doc.setFontSize(8);
+    doc.setTextColor(140, 140, 140);
+    doc.text(`Generated securely by Academic Management System - ${new Date().toLocaleString('en-US')}`, 105, 274, { align: 'center' });
+
+    doc.save(`Academic_Report_${currentStudent.barcode}_${currentStudent.name.replace(/\s+/g, '_')}.pdf`);
+  };
+
+  // Filter students for parent leaderboard view
+  const leaderboardGradeFilter = leaderboardFilter === 'student_grade' ? currentStudent.groupGrade : 'all';
+  const leaderboardFilteredStudents = sortedStudents.filter(
+    (s) => leaderboardGradeFilter === 'all' || s.groupGrade === leaderboardGradeFilter
+  );
+  const parentTopStudents = [...leaderboardFilteredStudents].sort((a, b) => (b.points || 0) - (a.points || 0));
+  const currentStudentRank = parentTopStudents.findIndex((s) => s.barcode === currentStudent.barcode) + 1;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -213,14 +346,16 @@ export const ParentPortal: React.FC = () => {
       <div className="flex border-b gap-2 sm:gap-4 overflow-x-auto pb-1" style={{ borderColor: isDark ? 'rgba(212, 175, 55, 0.2)' : '#e2e8f0' }}>
         {[
           { id: 'overview' as ParentTab, label: '🌟 التقرير الشامل', icon: Sparkles },
+          { id: 'leaderboard' as ParentTab, label: '🏆 لوحة الشرف والأوائل', icon: Trophy },
+          { id: 'homework' as ParentTab, label: '📚 متابعة الواجبات', icon: BookOpen },
           {
             id: 'broadcasts' as ParentTab,
-            label: `📢 تنبيهات مس إيمان العامة (${studentBroadcasts.length})`,
+            label: `📢 تنبيهات مس إيمان (${studentBroadcasts.length})`,
             icon: Radio,
           },
           {
             id: 'inbox' as ParentTab,
-            label: `💬 رسائل وتقارير الطالب (${studentMessages.length})`,
+            label: `💬 رسائل الطالب (${studentMessages.length})`,
             icon: Inbox,
           },
           { id: 'grades' as ParentTab, label: '📊 سجل الاختبارات', icon: Award },
@@ -250,69 +385,499 @@ export const ParentPortal: React.FC = () => {
       {/* VIEW 1: OVERVIEW */}
       {/* ========================================================= */}
       {parentTab === 'overview' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Latest Exam Card */}
-          <div
-            className="p-6 rounded-3xl border space-y-4"
-            style={{
-              backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
-              borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
-            }}
-          >
-            <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
-              <div className="flex items-center gap-2">
-                <Award className="w-5 h-5 text-amber-400" />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Latest Exam Card */}
+            <div
+              className="p-6 rounded-3xl border space-y-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
+                <div className="flex items-center gap-2">
+                  <Award className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-sm font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                    آخر اختبار رياضيات مسجل
+                  </h3>
+                </div>
+              </div>
+
+              {currentStudent.lastExamTitle ? (
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs text-slate-400 font-bold">اسم الامتحان:</p>
+                    <p className="text-base font-black text-slate-200">{currentStudent.lastExamTitle}</p>
+                  </div>
+                  <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
+                    <span className="text-xs text-amber-300 font-bold">النتيجة المحققة:</span>
+                    <span className="text-sm font-black text-amber-400">{currentStudent.lastExamScore}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400">لم يتم رصد اختبارات بعد في هذه الفترة.</p>
+              )}
+            </div>
+
+            {/* Latest Homework Status Card */}
+            <div
+              className="p-6 rounded-3xl border space-y-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
+                <div className="flex items-center gap-2">
+                  <BookOpen className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-sm font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                    حالة الواجب المنزلي الأخير
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setParentTab('homework')}
+                  className="text-[11px] font-bold text-amber-400 hover:underline"
+                >
+                  التفاصيل الكاملة ←
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-400 font-bold">تقييم المس للواجب:</span>
+                  <span
+                    className={`px-3 py-1 rounded-xl text-xs font-black border ${
+                      currentStudent.lastHomeworkStatus === 'done_full'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                        : currentStudent.lastHomeworkStatus === 'done_partial'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : currentStudent.lastHomeworkStatus === 'not_done'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                        : 'bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                  >
+                    {currentStudent.lastHomeworkStatus === 'done_full'
+                      ? 'عمل الواجب كاملاً ✅'
+                      : currentStudent.lastHomeworkStatus === 'done_partial'
+                      ? 'ساب جزء من الواجب ⚠️'
+                      : currentStudent.lastHomeworkStatus === 'not_done'
+                      ? 'قصر في الواجب ❌'
+                      : 'بانتظار رصد الحصة ⏳'}
+                  </span>
+                </div>
+
+                {currentStudent.lastHomeworkNote && (
+                  <div className="p-3 rounded-xl bg-slate-800/40 border border-slate-700 text-xs text-slate-300">
+                    <span className="font-bold text-amber-400 block mb-1">ملاحظة المعلمة:</span>
+                    {currentStudent.lastHomeworkNote}
+                  </div>
+                )}
+
+                {currentStudent.lastHomeworkDate && (
+                  <p className="text-[10px] text-slate-400">آخر تاريخ متابعة: {currentStudent.lastHomeworkDate}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Official Report Card & Certificate */}
+            <div
+              className="p-6 rounded-3xl border space-y-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
+                <div className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-sm font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                    بطاقة التقرير الأكاديمي المعتمدة
+                  </h3>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-300 leading-relaxed">
+                يمكنك تحميل وطباعة بطاقة الأداء الفردي المعتمدة للطالب/ة بصيغة PDF لمتابعة كافة الدرجات، الحضور، ونقاط التميز.
+              </p>
+
+              <button
+                onClick={handleDownloadStudentReport}
+                className="w-full py-3 btn-gold font-bold text-xs rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all"
+              >
+                <Download className="w-4 h-4" />
+                <span>تحميل بطاقة التقرير الأكاديمي (PDF)</span>
+              </button>
+            </div>
+
+            {/* Guidelines Card */}
+            <div
+              className="p-6 rounded-3xl border space-y-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <div className="flex items-center gap-2 border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
+                <BookOpen className="w-5 h-5 text-amber-400" />
                 <h3 className="text-sm font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
-                  آخر اختبار رياضيات مسجل
+                  تعليمات وتوجيهات مس إيمان الدمشيتي
                 </h3>
               </div>
+
+              <ul className="text-xs space-y-2.5 text-slate-300">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>يرجى الحضور قبل موعد الحصة بـ 10 دقائق لتجهيز كشكول التمارين.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>إحضار كارت الباركود الخاص بالطالب في كل حصة لتسجيل الحضور.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <span>حل الواجبات المحددة أولاً بأول لجمع نقاط التميز والتكريم الشهري ⭐.</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VIEW: LEADERBOARD & HONOR BOARD */}
+      {/* ========================================================= */}
+      {parentTab === 'leaderboard' && (
+        <div className="space-y-6">
+          {/* Header & Filter */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b pb-4" style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}>
+            <div>
+              <h3 className="text-base font-black flex items-center gap-2" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                <Trophy className="w-5 h-5 text-amber-400" />
+                <span>لوحة الشرف وتكريم أوائل الرياضيات 🏆</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                تكريم شهري لأبطال مادة الرياضيات وفقاً لنقاط التميز، الالتزام بالواجبات، ودرجات الاختبارات.
+              </p>
             </div>
 
-            {currentStudent.lastExamTitle ? (
-              <div className="space-y-3">
-                <div>
-                  <p className="text-xs text-slate-400 font-bold">اسم الامتحان:</p>
-                  <p className="text-base font-black text-slate-200">{currentStudent.lastExamTitle}</p>
-                </div>
-                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between">
-                  <span className="text-xs text-amber-300 font-bold">النتيجة المحققة:</span>
-                  <span className="text-sm font-black text-amber-400">{currentStudent.lastExamScore}</span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-xs text-slate-400">لم يتم رصد اختبارات بعد في هذه الفترة.</p>
-            )}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-300">عرض الأوائل في:</span>
+              <select
+                value={leaderboardFilter}
+                onChange={(e) => setLeaderboardFilter(e.target.value as any)}
+                className="p-2 text-xs rounded-xl border outline-none font-bold"
+                style={{
+                  backgroundColor: isDark ? 'rgba(9, 14, 23, 0.8)' : '#f8fafc',
+                  borderColor: 'rgba(212, 175, 55, 0.3)',
+                  color: isDark ? '#ffffff' : '#0f172a',
+                }}
+              >
+                <option value="student_grade">مرحلة الطالب ({currentStudent.groupGrade})</option>
+                <option value="all">كافة المراحل الدراسية</option>
+              </select>
+            </div>
           </div>
 
-          {/* Guidelines Card */}
+          {/* Student's Rank Callout Card */}
           <div
-            className="p-6 rounded-3xl border space-y-4"
+            className="p-5 rounded-2xl border flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg"
+            style={{
+              background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.15) 0%, rgba(18, 25, 38, 0.95) 100%)',
+              borderColor: 'rgba(212, 175, 55, 0.4)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 font-black text-lg">
+                {currentStudentRank > 0 ? `#${currentStudentRank}` : '⭐'}
+              </div>
+              <div>
+                <p className="text-xs text-amber-300 font-bold">موقع ابنك/ابنتك في لوحة الشرف:</p>
+                <h4 className="text-sm sm:text-base font-black text-slate-100">
+                  {currentStudent.name} (المركز {currentStudentRank > 0 ? currentStudentRank : 'المشارك'} من أصل {parentTopStudents.length} طالب)
+                </h4>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-center px-4 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <span className="text-[10px] text-slate-400 block font-bold">رصيد النقاط ⭐</span>
+                <span className="text-sm font-black text-amber-400">{currentStudent.points || 0} نقطة</span>
+              </div>
+
+              <button
+                onClick={handleDownloadStudentReport}
+                className="px-3.5 py-2 rounded-xl btn-gold text-xs font-bold flex items-center gap-1.5 shadow-md"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>شهادة التقرير</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Podium for Top 3 Students */}
+          {parentTopStudents.length >= 3 && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+              {/* 2nd Place */}
+              <div
+                className="p-5 rounded-3xl border text-center space-y-2 order-2 sm:order-1 relative"
+                style={{
+                  backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                  borderColor: 'rgba(203, 213, 225, 0.4)',
+                }}
+              >
+                <div className="w-12 h-12 mx-auto rounded-full bg-slate-300/20 border border-slate-300 flex items-center justify-center text-slate-300 text-xl font-black">
+                  🥈
+                </div>
+                <p className="text-xs font-black text-slate-300">المركز الثاني</p>
+                <h4 className="text-sm font-black text-slate-100 truncate">{parentTopStudents[1]?.name}</h4>
+                <p className="text-[11px] text-slate-400">{parentTopStudents[1]?.groupGrade}</p>
+                <div className="inline-block px-3 py-1 rounded-full bg-slate-500/10 border border-slate-400/30 text-xs font-black text-slate-300">
+                  {parentTopStudents[1]?.points || 0} نقطة ⭐
+                </div>
+              </div>
+
+              {/* 1st Place - Champion */}
+              <div
+                className="p-6 rounded-3xl border text-center space-y-2.5 order-1 sm:order-2 relative shadow-2xl scale-105"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(212, 175, 55, 0.25) 0%, rgba(18, 25, 38, 0.98) 100%)',
+                  borderColor: 'rgba(212, 175, 55, 0.6)',
+                }}
+              >
+                <div className="w-14 h-14 mx-auto rounded-full bg-amber-400/20 border-2 border-amber-400 flex items-center justify-center text-amber-300 text-2xl font-black shadow-lg">
+                  🥇
+                </div>
+                <span className="px-3 py-0.5 rounded-full text-[10px] font-black bg-amber-500/30 text-amber-300 border border-amber-500/50 uppercase tracking-wider">
+                  الأول على المرحلة 👑
+                </span>
+                <h4 className="text-base font-black text-amber-200 truncate">{parentTopStudents[0]?.name}</h4>
+                <p className="text-xs text-slate-300">{parentTopStudents[0]?.groupGrade}</p>
+                <div className="inline-block px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-400 text-sm font-black text-amber-300 shadow-md">
+                  {parentTopStudents[0]?.points || 0} نقطة ⭐
+                </div>
+              </div>
+
+              {/* 3rd Place */}
+              <div
+                className="p-5 rounded-3xl border text-center space-y-2 order-3 sm:order-3 relative"
+                style={{
+                  backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                  borderColor: 'rgba(205, 127, 50, 0.4)',
+                }}
+              >
+                <div className="w-12 h-12 mx-auto rounded-full bg-amber-700/20 border border-amber-700 flex items-center justify-center text-amber-600 text-xl font-black">
+                  🥉
+                </div>
+                <p className="text-xs font-black text-amber-600">المركز الثالث</p>
+                <h4 className="text-sm font-black text-slate-100 truncate">{parentTopStudents[2]?.name}</h4>
+                <p className="text-[11px] text-slate-400">{parentTopStudents[2]?.groupGrade}</p>
+                <div className="inline-block px-3 py-1 rounded-full bg-amber-700/10 border border-amber-700/30 text-xs font-black text-amber-500">
+                  {parentTopStudents[2]?.points || 0} نقطة ⭐
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Full Leaderboard List */}
+          <div
+            className="rounded-3xl border overflow-hidden"
             style={{
               backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
               borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
             }}
           >
-            <div className="flex items-center gap-2 border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
-              <BookOpen className="w-5 h-5 text-amber-400" />
-              <h3 className="text-sm font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
-                تعليمات وتوجيهات مس إيمان الدمشيتي
-              </h3>
+            <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
+              <h4 className="text-sm font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                ترتيب الطلاب بالكامل في لوحة الشرف ({parentTopStudents.length} طالب)
+              </h4>
             </div>
 
-            <ul className="text-xs space-y-2.5 text-slate-300">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span>يرجى الحضور قبل موعد الحصة بـ 10 دقائق لتجهيز كشكول التمارين.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span>إحضار كارت الباركود الخاص بالطالب في كل حصة لتسجيل الحضور.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                <span>حل الواجبات المحددة أولاً بأول لجمع نقاط التميز والتكريم الشهري ⭐.</span>
-              </li>
-            </ul>
+            <div className="divide-y divide-slate-800">
+              {parentTopStudents.map((st, idx) => {
+                const isCurrent = st.barcode === currentStudent.barcode;
+                return (
+                  <div
+                    key={st.barcode}
+                    className={`p-4 flex items-center justify-between gap-3 transition-colors ${
+                      isCurrent
+                        ? 'bg-amber-500/15 border-r-4 border-amber-400'
+                        : 'hover:bg-slate-800/30'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black ${
+                          idx === 0
+                            ? 'bg-amber-400/20 text-amber-300 border border-amber-400'
+                            : idx === 1
+                            ? 'bg-slate-400/20 text-slate-200 border border-slate-400'
+                            : idx === 2
+                            ? 'bg-amber-700/20 text-amber-500 border border-amber-700'
+                            : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className={`text-xs sm:text-sm font-black ${isCurrent ? 'text-amber-300 font-black' : 'text-slate-200'}`}>
+                            {st.name}
+                          </p>
+                          {isCurrent && (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/30 text-amber-300 border border-amber-500/50">
+                              ابنك/ابنتك ⭐
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-400">{st.groupGrade} • مجموعة {st.groupDays}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 rounded-xl text-xs font-black bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        {st.points || 0} نقطة ⭐
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* VIEW: HOMEWORK TRACKING FOR CURRENT STUDENT */}
+      {/* ========================================================= */}
+      {parentTab === 'homework' && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}>
+            <div>
+              <h3 className="text-base font-black flex items-center gap-2" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                <BookOpen className="w-5 h-5 text-amber-400" />
+                <span>متابعة كشكول وتطبيقات الواجب المنزلي 📚</span>
+              </h3>
+              <p className="text-xs text-slate-400 mt-1">
+                سجل إنجاز الواجبات المنزلية والتمارين المرصودة بواسطة مس إيمان الدمشيتي.
+              </p>
+            </div>
+          </div>
+
+          {/* Current Homework Status Banner */}
+          <div
+            className="p-6 rounded-3xl border space-y-4 shadow-xl"
+            style={{
+              backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+              borderColor:
+                currentStudent.lastHomeworkStatus === 'done_full'
+                  ? 'rgba(16, 185, 129, 0.4)'
+                  : currentStudent.lastHomeworkStatus === 'done_partial'
+                  ? 'rgba(245, 158, 11, 0.4)'
+                  : currentStudent.lastHomeworkStatus === 'not_done'
+                  ? 'rgba(239, 68, 68, 0.4)'
+                  : 'rgba(212, 175, 55, 0.25)',
+            }}
+          >
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs text-slate-400 font-bold block mb-1">تقييم الواجب الأخير المسجل:</span>
+                <h4 className="text-lg sm:text-xl font-black text-slate-100 flex items-center gap-2">
+                  {currentStudent.lastHomeworkStatus === 'done_full' && (
+                    <span className="text-emerald-400">عمل الواجب كاملاً بنجاح وتفوق ✅</span>
+                  )}
+                  {currentStudent.lastHomeworkStatus === 'done_partial' && (
+                    <span className="text-amber-400">ساب جزء من الواجب (يرجى إكماله) ⚠️</span>
+                  )}
+                  {currentStudent.lastHomeworkStatus === 'not_done' && (
+                    <span className="text-rose-400">قصر في الواجب (لم يقم بالحل) ❌</span>
+                  )}
+                  {(!currentStudent.lastHomeworkStatus || currentStudent.lastHomeworkStatus === 'unassigned') && (
+                    <span className="text-slate-400">بانتظار رصد الحصة القادمة ⏳</span>
+                  )}
+                </h4>
+              </div>
+
+              {currentStudent.lastHomeworkDate && (
+                <span className="px-3 py-1 rounded-xl text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                  تاريخ الرصد: {currentStudent.lastHomeworkDate}
+                </span>
+              )}
+            </div>
+
+            {/* Homework Note */}
+            {currentStudent.lastHomeworkNote ? (
+              <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-1">
+                <p className="text-xs font-bold text-amber-300">ملاحظة وتوجيه مس إيمان:</p>
+                <p className="text-xs sm:text-sm text-slate-200 leading-relaxed font-medium">
+                  {currentStudent.lastHomeworkNote}
+                </p>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700 text-xs text-slate-400">
+                لا توجد ملاحظات كتابية إضافية مرصودة على هذا الواجب.
+              </div>
+            )}
+
+            {/* Quick Action to Chat With Teacher */}
+            <div className="pt-2 flex flex-wrap gap-2.5">
+              <a
+                href={`https://api.whatsapp.com/send?phone=${SCHOOL_INTL_PHONE}&text=${encodeURIComponent(
+                  `السلام عليكم مس إيمان، أنا ولي أمر الطالب/ة ${currentStudent.name}، بخصوص متابعة الواجب المنزلي الأخير.`
+                )}`}
+                target="_blank"
+                rel="noreferrer"
+                className="px-4 py-2.5 rounded-xl btn-gold text-xs font-bold flex items-center gap-1.5 shadow-md"
+              >
+                <Send className="w-3.5 h-3.5" />
+                <span>محادثة المس عبر الواتساب بخصوص الواجب</span>
+              </a>
+
+              <button
+                onClick={() => setParentTab('inbox')}
+                className="px-4 py-2.5 rounded-xl border text-xs font-bold text-slate-300 hover:text-white bg-slate-800/60 border-slate-700 transition-all flex items-center gap-1.5"
+              >
+                <MessageSquare className="w-3.5 h-3.5" />
+                <span>إرسال استفسار للمس عبر الموقع</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Homework Statistics Breakdown */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div
+              className="p-5 rounded-2xl border text-center space-y-1"
+              style={{ backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff', borderColor: 'rgba(16, 185, 129, 0.3)' }}
+            >
+              <div className="w-8 h-8 mx-auto rounded-full bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-black">
+                ✓
+              </div>
+              <p className="text-xs text-slate-400 font-bold">واجبات كاملة ومثالية</p>
+              <p className="text-xl font-black text-emerald-400">{currentStudent.totalHomeworkDone || 0}</p>
+            </div>
+
+            <div
+              className="p-5 rounded-2xl border text-center space-y-1"
+              style={{ backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff', borderColor: 'rgba(245, 158, 11, 0.3)' }}
+            >
+              <div className="w-8 h-8 mx-auto rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-black">
+                ⚠️
+              </div>
+              <p className="text-xs text-slate-400 font-bold">واجبات غير مكتملة (ناقصة)</p>
+              <p className="text-xl font-black text-amber-400">{currentStudent.totalHomeworkIncomplete || 0}</p>
+            </div>
+
+            <div
+              className="p-5 rounded-2xl border text-center space-y-1"
+              style={{ backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff', borderColor: 'rgba(239, 68, 68, 0.3)' }}
+            >
+              <div className="w-8 h-8 mx-auto rounded-full bg-rose-500/20 text-rose-300 flex items-center justify-center font-black">
+                ✕
+              </div>
+              <p className="text-xs text-slate-400 font-bold">واجبات لم يتم تسليمها</p>
+              <p className="text-xl font-black text-rose-400">{currentStudent.totalHomeworkMissing || 0}</p>
+            </div>
           </div>
         </div>
       )}

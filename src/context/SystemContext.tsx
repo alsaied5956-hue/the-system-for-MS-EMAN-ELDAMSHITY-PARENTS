@@ -745,13 +745,37 @@ interface SystemContextType {
   toggleStudentStatus: (barcode: string) => Promise<{ success: boolean; message: string }>;
   resetStudentPassword: (barcode: string, newPass: string) => Promise<{ success: boolean; message: string }>;
 
+  // Homework Management & Instant Multi-Channel Alerts
+  recordHomeworkStatus: (
+    barcode: string,
+    status: 'done_full' | 'done_partial' | 'not_done',
+    note?: string,
+    options?: { sendPlatformMessage?: boolean; openWhatsApp?: boolean }
+  ) => Promise<{ success: boolean; message: string }>;
+
   // WhatsApp Dispatchers
   generateStudentWhatsAppText: (student: StudentData, customNote?: string) => string;
+  generateHomeworkWhatsAppText: (
+    student: StudentData,
+    status: 'done_full' | 'done_partial' | 'not_done',
+    note?: string
+  ) => string;
   sendWhatsAppToStudentParent: (student: StudentData, customNote?: string) => void;
+  sendHomeworkWhatsAppAlert: (
+    student: StudentData,
+    status: 'done_full' | 'done_partial' | 'not_done',
+    note?: string
+  ) => void;
   sendBulkWhatsAppBroadcast: (
     message: string,
     targetGrade?: string
   ) => { targetCount: number; links: WhatsAppQueueItem[] };
+  sendBulkPlatformBroadcast: (
+    title: string,
+    message: string,
+    targetGrade?: string,
+    priority?: 'normal' | 'important' | 'urgent'
+  ) => Promise<{ success: boolean; message: string }>;
 }
 
 const SystemContext = createContext<SystemContextType | undefined>(undefined);
@@ -1645,6 +1669,168 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [students]
   );
 
+  const generateHomeworkWhatsAppText = useCallback(
+    (
+      student: StudentData,
+      status: 'done_full' | 'done_partial' | 'not_done',
+      note?: string
+    ) => {
+      const today = new Date().toLocaleDateString('ar-EG', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+
+      let statusBadge = '✅ تم أداء الواجب كاملاً بإتقان';
+      let toneAdvice = 'نشكر الطالب/ة على التميز والحرص والاجتهاد المستمر! 🌟';
+      let starAward = '+5 نقاط تميز ⭐';
+
+      if (status === 'done_partial') {
+        statusBadge = '⚠️ تم حل جزء من الواجب (واجب ناقص)';
+        toneAdvice = 'نرجو من ولي الأمر التكرم بمتابعة الطالب لاستكمال الأجزاء المتبقية ومراجعة الحلول.';
+        starAward = '+2 نقطة تميز';
+      } else if (status === 'not_done') {
+        statusBadge = '❌ لم يقم الطالب بأداء الواجب (مقصر)';
+        toneAdvice = 'نحيطكم علماً بضرورة حل الواجب والالتزام بالحصة القادمة حرصاً على مستوى الطالب ومستقبله الدراسي.';
+        starAward = '0 نقاط تميز';
+      }
+
+      let text = `📚 *تقرير متابعة الواجب المنزلي - ${SCHOOL_TEACHER_NAME}*\n`;
+      text += `━━━━━━━━━━━━━━━━━━━\n`;
+      text += `👤 *اسم الطالب:* ${student.name}\n`;
+      text += `🔢 *كود الطالب:* ${student.barcode}\n`;
+      text += `🎓 *المرحلة:* ${student.groupGrade}\n`;
+      text += `🗓️ *تاريخ الحصة:* ${today}\n\n`;
+
+      text += `📌 *حالة الواجب اليوم:* \n`;
+      text += `${statusBadge}\n`;
+      text += `• المكافأة: ${starAward}\n\n`;
+
+      if (note && note.trim()) {
+        text += `📝 *تفاصيل وملاحظة المعلمة:* \n`;
+        text += `${note.trim()}\n\n`;
+      }
+
+      text += `💡 *توجيه المتابعة:* \n`;
+      text += `${toneAdvice}\n\n`;
+
+      text += `━━━━━━━━━━━━━━━━━━━\n`;
+      text += `🌐 لمتابعة سجل الطالب والتقارير عبر المنصة:\n`;
+      text += `رابط المنصة: ${window.location.origin}\n`;
+      text += `مع تحيات مس إيمان ومساعديها 🌸`;
+
+      return text;
+    },
+    []
+  );
+
+  const sendHomeworkWhatsAppAlert = useCallback(
+    (
+      student: StudentData,
+      status: 'done_full' | 'done_partial' | 'not_done',
+      note?: string
+    ) => {
+      const rawPhone = student.parentPhone || student.phone;
+      const cleanPhone = normalizeDigits(rawPhone).replace(/[^0-9]/g, '');
+      if (!cleanPhone) {
+        alert('لا يوجد رقم هاتف مسجل لولي أمر هذا الطالب.');
+        return;
+      }
+
+      const intlPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone.startsWith('2') ? cleanPhone : `20${cleanPhone}`;
+      const msg = generateHomeworkWhatsAppText(student, status, note);
+      window.open(`https://api.whatsapp.com/send?phone=${intlPhone}&text=${encodeURIComponent(msg)}`, '_blank');
+    },
+    [generateHomeworkWhatsAppText]
+  );
+
+  const recordHomeworkStatus = useCallback(
+    async (
+      barcode: string,
+      status: 'done_full' | 'done_partial' | 'not_done',
+      note?: string,
+      options?: { sendPlatformMessage?: boolean; openWhatsApp?: boolean }
+    ) => {
+      const targetStudent = students.find((s) => s.barcode === barcode);
+      if (!targetStudent) {
+        return { success: false, message: 'الطالب غير موجود بالنظام.' };
+      }
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      let pointDelta = 0;
+      let statusLabel = 'واجب كامل';
+
+      let doneCount = targetStudent.totalHomeworkDone || 0;
+      let incCount = targetStudent.totalHomeworkIncomplete || 0;
+      let missCount = targetStudent.totalHomeworkMissing || 0;
+
+      if (status === 'done_full') {
+        pointDelta = 5;
+        statusLabel = 'أداء الواجب كاملاً';
+        doneCount += 1;
+      } else if (status === 'done_partial') {
+        pointDelta = 2;
+        statusLabel = 'حل جزء من الواجب (واجب ناقص)';
+        incCount += 1;
+      } else {
+        pointDelta = 0;
+        statusLabel = 'عدم أداء الواجب (مقصر)';
+        missCount += 1;
+      }
+
+      const updatedStudent: StudentData = {
+        ...targetStudent,
+        points: Math.max(0, (targetStudent.points || 0) + pointDelta),
+        lastHomeworkStatus: status,
+        lastHomeworkDate: todayStr,
+        lastHomeworkNote: note || '',
+        totalHomeworkDone: doneCount,
+        totalHomeworkIncomplete: incCount,
+        totalHomeworkMissing: missCount,
+      };
+
+      const nextStudents = students.map((s) => (s.barcode === barcode ? updatedStudent : s));
+      setStudents(nextStudents);
+      await persistState(nextStudents);
+
+      // Auto-send In-App Platform Notification if requested
+      if (options?.sendPlatformMessage) {
+        const platformTitle = `متابعة الواجب: ${statusLabel}`;
+        const platformContent = `نحيطكم علماً بحالة الواجب المنزلي للطالب/ة (${targetStudent.name}) لتاريخ ${todayStr}:\nالحالة: ${statusLabel} (${pointDelta > 0 ? `+${pointDelta} نقاط تميز` : 'بدون نقاط'}).\n${note ? `ملاحظة المعلمة: ${note}` : ''}`;
+        await sendDirectMessageToStudent(barcode, platformContent, 'homework', platformTitle);
+      }
+
+      // Auto-open WhatsApp if requested
+      if (options?.openWhatsApp) {
+        sendHomeworkWhatsAppAlert(updatedStudent, status, note);
+      }
+
+      return {
+        success: true,
+        message: `تم تسجيل (${statusLabel}) للطالب (${targetStudent.name}) بنجاح!`,
+      };
+    },
+    [students, persistState, sendDirectMessageToStudent, sendHomeworkWhatsAppAlert]
+  );
+
+  const sendBulkPlatformBroadcast = useCallback(
+    async (
+      title: string,
+      message: string,
+      targetGrade: string = 'all',
+      priority: 'normal' | 'important' | 'urgent' = 'normal'
+    ) => {
+      if (!title.trim() || !message.trim()) {
+        return { success: false, message: 'يرجى كتابة عنوان ونص الرسالة أولاً.' };
+      }
+
+      const res = await addBroadcast(title.trim(), message.trim(), priority, targetGrade);
+      return res;
+    },
+    [addBroadcast]
+  );
+
   return (
     <SystemContext.Provider
       value={{
@@ -1687,9 +1873,13 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteStudentAccount,
         toggleStudentStatus,
         resetStudentPassword,
+        recordHomeworkStatus,
         generateStudentWhatsAppText,
+        generateHomeworkWhatsAppText,
         sendWhatsAppToStudentParent,
+        sendHomeworkWhatsAppAlert,
         sendBulkWhatsAppBroadcast,
+        sendBulkPlatformBroadcast,
       }}
     >
       {children}

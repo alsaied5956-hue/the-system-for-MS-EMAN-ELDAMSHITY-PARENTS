@@ -24,6 +24,14 @@ export interface StudentData {
   lastExamTitle?: string;
   lastExamScore?: string;
   
+  // Homework tracking state
+  lastHomeworkStatus?: 'done_full' | 'done_partial' | 'not_done' | 'unassigned';
+  lastHomeworkDate?: string;
+  lastHomeworkNote?: string;
+  totalHomeworkDone?: number;
+  totalHomeworkIncomplete?: number;
+  totalHomeworkMissing?: number;
+
   // Account security & activation
   password?: string;
   isActivated?: boolean;
@@ -31,7 +39,16 @@ export interface StudentData {
   statusReason?: string;
   
   // WhatsApp Verification Status
-  whatsappStatus?: 'verified_active' | 'no_whatsapp' | 'untested' | 'missing';
+  whatsappStatus?:
+    | 'verified_active'
+    | 'no_whatsapp'
+    | 'untested'
+    | 'missing'
+    | 'duplicate'
+    | 'fake_dummy'
+    | 'invalid_format'
+    | 'landline'
+    | 'fixable_missing_zero';
   whatsappTestedDate?: string;
   whatsappNotes?: string;
 }
@@ -76,6 +93,8 @@ export interface WhatsAppQueueItem {
 
 export type TeacherTab =
   | 'attendance-scanner'
+  | 'homework-tracker'
+  | 'leaderboard'
   | 'accounts'
   | 'broadcasts'
   | 'direct-messages'
@@ -84,6 +103,8 @@ export type TeacherTab =
 
 export type ParentTab =
   | 'overview'
+  | 'leaderboard'
+  | 'homework'
   | 'broadcasts'
   | 'inbox'
   | 'grades'

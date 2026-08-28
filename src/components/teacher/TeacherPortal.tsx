@@ -45,6 +45,8 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { AttendanceScannerTab } from './AttendanceScannerTab';
+import { HomeworkTrackerTab } from './HomeworkTrackerTab';
+import { LeaderboardAndReportsTab } from './LeaderboardAndReportsTab';
 import { PhoneAuditModal } from './PhoneAuditModal';
 import { exportPhoneAuditToExcel, exportPhoneAuditToPDF, analyzeStudentPhoneStatus } from '../../utils/phoneAuditExport';
 
@@ -202,42 +204,54 @@ export const TeacherPortal: React.FC = () => {
         </div>
 
         {/* Tab Buttons */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5 mt-6 pt-6 border-t" style={{ borderColor: isDark ? 'rgba(212, 175, 55, 0.15)' : '#e2e8f0' }}>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 mt-6 pt-6 border-t" style={{ borderColor: isDark ? 'rgba(212, 175, 55, 0.15)' : '#e2e8f0' }}>
           {[
             {
               id: 'attendance-scanner' as TeacherTab,
-              label: '⚡ كشف وحضور الباركود',
-              desc: 'مسح فوري وإرسال إشعار فوري لولي الأمر',
+              label: '⚡ حضور الباركود',
+              desc: 'مسح فوري وإشعار ولي الأمر',
               icon: QrCode,
             },
             {
+              id: 'homework-tracker' as TeacherTab,
+              label: '📚 متابعة الواجبات',
+              desc: 'رصد الواجب وإشعار فوري',
+              icon: FileText,
+            },
+            {
+              id: 'leaderboard' as TeacherTab,
+              label: '🏆 لوحة الأوائل',
+              desc: 'تقارير وشرف وتكريم',
+              icon: Award,
+            },
+            {
               id: 'accounts' as TeacherTab,
-              label: '👥 حسابات أولياء الأمور',
-              desc: 'عرض وتعديل بيانات الحسابات وكلمات المرور',
+              label: '👥 حسابات الطلاب',
+              desc: 'تعديل البيانات وكلمات السر',
               icon: Users,
             },
             {
               id: 'broadcasts' as TeacherTab,
-              label: '📢 رسائل عامة عبر المنصة',
-              desc: 'إرسال تنبيهات لكافة أولياء الأمور بالموقع',
+              label: '📢 رسائل المنصة',
+              desc: 'تنبيهات عامة لجميع الحسابات',
               icon: Radio,
             },
             {
               id: 'direct-messages' as TeacherTab,
-              label: '💬 رسائل وتقارير الطلاب',
-              desc: 'إرسال تقرير وملاحظات لكل طالب على حدة',
+              label: '💬 رسائل الطلاب',
+              desc: 'تقرير وملاحظات خاصة لكل طالب',
               icon: MessageSquare,
             },
             {
               id: 'whatsapp-dispatch' as TeacherTab,
-              label: '📲 الإرسال عبر الواتساب',
-              desc: 'إرسال التقرير فردياً أو للجميع دفعة واحدة',
+              label: '📲 إرسال واتساب',
+              desc: 'رسائل مجمعة وفردية بنقرة واحدة',
               icon: Send,
             },
             {
               id: 'security' as TeacherTab,
-              label: '🔐 أمان الحساب ورمز المرور',
-              desc: 'تغيير وتعيين رمز المرور السري للمعلمة',
+              label: '🔐 رمز المرور',
+              desc: 'تغيير وتعيين رمز المعلمة',
               icon: KeyRound,
             },
           ].map((tab) => {
@@ -273,6 +287,20 @@ export const TeacherPortal: React.FC = () => {
       {/* ========================================================= */}
       {teacherTab === 'attendance-scanner' && (
         <AttendanceScannerTab />
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 0.1: HOMEWORK TRACKER & DIRECT DISPATCH */}
+      {/* ========================================================= */}
+      {teacherTab === 'homework-tracker' && (
+        <HomeworkTrackerTab />
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 0.2: LEADERBOARD & INDIVIDUAL PERFORMANCE REPORTS */}
+      {/* ========================================================= */}
+      {teacherTab === 'leaderboard' && (
+        <LeaderboardAndReportsTab />
       )}
 
       {/* ========================================================= */}
@@ -509,6 +537,58 @@ export const TeacherPortal: React.FC = () => {
             )}
 
             <div className="space-y-3">
+              {/* Quick One-Click Templates for Platform Broadcast */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">قوالب ورسائل جاهزة بنقرة واحدة ⚡:</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    {
+                      label: '🔔 تذكير بموعد الحصة',
+                      title: 'تذكير بموعد الحصة القادمة والالتزام بالحضور',
+                      content: 'نذكر أبنائنا الطلاب بالالتزام بالحضور في الموعد المحدد للحصة وإحضار الأدوات المدرسية وكشكول الواجب.',
+                      priority: 'normal' as const,
+                    },
+                    {
+                      label: '📝 كويز تقييمي',
+                      title: 'موعد الاختبار التقييمي الأسبوعي',
+                      content: 'نحيطكم علماً بأنه سيتم عقد اختبار تقييمي خلال الحصة القادمة، يرجى المراجعة الجيدة لكافة الدروس السابقة.',
+                      priority: 'important' as const,
+                    },
+                    {
+                      label: '📚 تسليم الواجب',
+                      title: 'تنبيه هام بشأن تسليم الواجبات والتطبيقات',
+                      content: 'يرجى التأكد من إنهاء كافة صفحات الواجب المنزلي، وسيتم فحص الكشاكيل ورصد الدرجات في بداية الحصة مباشرة.',
+                      priority: 'normal' as const,
+                    },
+                    {
+                      label: '🌟 تهنئة للمتفوقين',
+                      title: 'تهنئة خاصة لأبطال لوحة الشرف والتميز',
+                      content: 'خالص الشكر والتقدير لطلابنا المتميزين وأولياء أمورهم على تفوقهم وحصولهم على أعلى الدرجات ونقاط التميز!',
+                      priority: 'important' as const,
+                    },
+                    {
+                      label: '🚨 تنبيه عاجل',
+                      title: 'إشعار عاجل وهام من إدارة المادة',
+                      content: 'يرجى من جميع الطلاب وأولياء الأمور مراجعة التقرير الأكاديمي والاطلاع على التوجيهات الجديدة.',
+                      priority: 'urgent' as const,
+                    },
+                  ].map((tpl, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setBcTitle(tpl.title);
+                        setBcContent(tpl.content);
+                        setBcPriority(tpl.priority);
+                      }}
+                      className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 transition-all flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>{tpl.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1">عنوان الرسالة أو التنبيه:</label>
                 <input
@@ -769,6 +849,58 @@ export const TeacherPortal: React.FC = () => {
                 />
               </div>
 
+              {/* One-Click Direct Message Templates */}
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">قوالب ورسائل جاهزة بنقرة واحدة ⚡:</label>
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {[
+                    {
+                      label: '🌟 إشادة وتفوق',
+                      cat: 'achievement' as const,
+                      title: 'إشادة بالتفوق والتميز في مادة الرياضيات',
+                      text: 'نحيطكم علماً بأن الطالب أظهر أداءً نموذجياً وتفوقاً ملحوظاً خلال الحصة، خالص التحية والتقدير لجهده واجتهاده المستمر!',
+                    },
+                    {
+                      label: '📚 إتقان الواجب كاملاً',
+                      cat: 'homework' as const,
+                      title: 'تقرير الواجب المنزلي: ممتاز وكامل',
+                      text: 'تم فحص كشكول الواجب وتأكدت المعلمة من حل كافة المسائل والتطبيقات بصورة نموذجية ومنظمة (+5 نقاط تميز).',
+                    },
+                    {
+                      label: '⚠️ ساب جزء من الواجب',
+                      cat: 'homework' as const,
+                      title: 'ملاحظة واجب: ساب جزء من التمارين',
+                      text: 'تنبيه لولي الأمر: قام الطالب بحل جزء من الواجب فقط وترك بعض المسائل، برجاء متابعة إكمال التمرينات المتبقية قبل الحصة القادمة.',
+                    },
+                    {
+                      label: '❌ تقصير في الواجب',
+                      cat: 'homework' as const,
+                      title: 'تنبيه عاجل: عدم أداء الواجب المنزلي',
+                      text: 'نحيطكم علماً بأن الطالب لم يقم بأداء الواجب المطلوب لهذه الحصة، يرجى التنبيه والمتابعة الدقيقة لعدم تكرار ذلك.',
+                    },
+                    {
+                      label: '⏰ تنبيه حضور وتأخير',
+                      cat: 'attendance' as const,
+                      title: 'تنبيه بخصوص الحضور والمواعيد',
+                      text: 'نذكركم بأهمية الالتزام بالحضور في الموعد المحدد قبل بدء الشرح بـ 10 دقائق لضمان الاستفادة الكاملة من وقت الحصة.',
+                    },
+                  ].map((tpl, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setDirectCategory(tpl.cat);
+                        setDirectTitle(tpl.title);
+                        setDirectMessageText(tpl.text);
+                      }}
+                      className="px-2 py-1 rounded-lg text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 border border-amber-500/25 transition-all cursor-pointer"
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1">نص الملاحظة أو التقرير:</label>
                 <textarea
@@ -1000,6 +1132,24 @@ export const TeacherPortal: React.FC = () => {
 
                   <div>
                     <label className="text-xs font-bold text-slate-300 block mb-1">ملاحظة إضافية خاصة (اختياري):</label>
+                    {/* Quick WhatsApp student templates */}
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {[
+                        { label: '🌟 تميز وتفوق', text: 'ما شاء الله، أداء الطالب/ة ممتاز جداً ومشارك فعال بالحصة!' },
+                        { label: '📚 متابعة الواجب', text: 'يرجى مراجعة حل الواجب واستكمال التمارين غير المكتملة.' },
+                        { label: '⚠️ انتباه وتركيز', text: 'يرجى توجيه الطالب للتركيز أثناء الشرح وتجنب التشتت.' },
+                        { label: '📝 كويز قادم', text: 'تذكير بالاستعداد للكويز القادم وحفظ القوانين الرياضية جيداً.' },
+                      ].map((t, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setWaCustomNote(t.text)}
+                          className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 border border-amber-500/20 transition-all cursor-pointer"
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
                     <textarea
                       rows={2}
                       placeholder="مثال: يرجى متابعة حل الواجب صفحة 24 ومراجعة تمارين الهندسة..."
@@ -1092,6 +1242,41 @@ export const TeacherPortal: React.FC = () => {
                   </div>
 
                   <div>
+                    <label className="text-xs font-bold text-slate-300 block mb-1">رسائل وقوالب جاهزة بنقرة واحدة ⚡:</label>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[
+                        {
+                          label: '🔔 موعد الحصة القادمة',
+                          text: 'نذكركم بموعد الحصة القادمة في موعدها المحدد تماماً، برجاء إحضار كشكول الواجب والآلة الحاسبة والأدوات الهندسية.',
+                        },
+                        {
+                          label: '📝 كويز تقييمي مهم',
+                          text: 'نحيطكم علماً بأنه سيتم عقد اختبار تقييمي خلال الحصة القادمة لقياس مستوى الاستيعاب والتحصيل الدراسي.',
+                        },
+                        {
+                          label: '📚 تنبيه حل الواجبات',
+                          text: 'تنبيه هام: يرجى متابعة حل كافة صفحات الواجب المنزلي، وسيتم فحص الكشاكيل ورصد النقاط في بداية الحصة.',
+                        },
+                        {
+                          label: '🏆 تهنئة وتكريم الأوائل',
+                          text: 'نهنئ أبنائنا الطلاب المتفوقين في لوحة الشرف على جهودهم وتميزهم المستمر، ونتمنى للجميع دوام النجاح والتفوق!',
+                        },
+                        {
+                          label: '🚨 تنبيه هام جداً',
+                          text: 'إشعار هام من إدارة المادة: يرجى مراجعة المنصة التعليمية لمتابعة تقرير الطالب والتوجيهات الدراسية الجديدة.',
+                        },
+                      ].map((t, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => setWaBulkMessage(t.text)}
+                          className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-amber-500/10 hover:bg-amber-500/25 text-amber-300 border border-amber-500/20 transition-all cursor-pointer"
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+
                     <label className="text-xs font-bold text-slate-300 block mb-1">نص الرسالة الجماعية:</label>
                     <textarea
                       rows={4}
