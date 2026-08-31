@@ -13,6 +13,8 @@ import {
   GRADE_ORDER,
   DEFAULT_GROUP_PRICES,
   AttendanceType,
+  ExamRecord,
+  TreasuryReceipt,
 } from '../types';
 import { systemDataRef, onValue, set } from '../lib/firebase';
 import { dispatchTargetedNotification } from '../utils/notificationEngine';
@@ -668,6 +670,63 @@ const INITIAL_STUDENTS: StudentData[] = [
   },
 ];
 
+const INITIAL_EXAMS: ExamRecord[] = [
+  {
+    id: 'exam-1',
+    title: 'اختبار نصف الفصل - الجبر وحساب المثلثات',
+    grade: 'الصف الثاني الثانوي',
+    maxScore: 50,
+    topic: 'الدوال الحقيقية والمثلثات',
+    date: new Date(Date.now() - 3 * 86400000).toISOString().split('T')[0],
+    scores: {
+      'STU-2025': 50,
+      'STU-2024': 48,
+    },
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'exam-2',
+    title: 'كويز سريع - الهندسة والتحليل الإحصائي',
+    grade: 'الصف الثالث الإعدادي',
+    maxScore: 30,
+    topic: 'النسب المثلثية وميل الخط المستقيم',
+    date: new Date(Date.now() - 5 * 86400000).toISOString().split('T')[0],
+    scores: {
+      'P6-001': 29,
+    },
+    createdAt: new Date().toISOString(),
+  },
+];
+
+const INITIAL_RECEIPTS: TreasuryReceipt[] = [
+  {
+    id: 'rec-1',
+    receiptNumber: 'REC-2026-001',
+    studentBarcode: 'STU-2025',
+    studentName: 'مريم السيد أحمد',
+    grade: 'الصف الثاني الثانوي',
+    month: new Date().toISOString().slice(0, 7),
+    amount: 200,
+    date: new Date().toISOString().split('T')[0],
+    time: '04:15 م',
+    notes: 'سداد اشتراك الشهر نقداً بالسنتر',
+    collectedBy: SCHOOL_TEACHER_NAME,
+  },
+  {
+    id: 'rec-2',
+    receiptNumber: 'REC-2026-002',
+    studentBarcode: 'STU-2024',
+    studentName: 'أحمد محمود علي',
+    grade: 'الصف الثاني الثانوي',
+    month: new Date().toISOString().slice(0, 7),
+    amount: 200,
+    date: new Date().toISOString().split('T')[0],
+    time: '04:30 م',
+    notes: 'تم الدفع بالكامل',
+    collectedBy: SCHOOL_TEACHER_NAME,
+  },
+];
+
 interface SystemContextType {
   // Theme & Network
   theme: ThemeMode;
@@ -701,6 +760,8 @@ interface SystemContextType {
   attendanceHistory: Record<string, Record<string, AttendanceType>>;
   attendanceToday: Record<string, AttendanceType>;
   payments: Record<string, Record<string, PaymentRecord>>;
+  exams: ExamRecord[];
+  receipts: TreasuryReceipt[];
 
   // Attendance & Quick Scanner Operations
   markAttendance: (
@@ -752,6 +813,35 @@ interface SystemContextType {
     note?: string,
     options?: { sendPlatformMessage?: boolean; openWhatsApp?: boolean }
   ) => Promise<{ success: boolean; message: string }>;
+
+  // Exams & Quiz Scores Manager
+  addExam: (exam: {
+    title: string;
+    grade: string;
+    maxScore: number;
+    topic?: string;
+    date?: string;
+  }) => Promise<{ success: boolean; message: string }>;
+  saveExamScores: (
+    examId: string,
+    scores: Record<string, number>
+  ) => Promise<{ success: boolean; message: string }>;
+  deleteExam: (examId: string) => Promise<{ success: boolean; message: string }>;
+  sendExamResultWhatsApp: (examId: string, studentBarcode: string) => void;
+
+  // Treasury & Receipts Manager
+  recordTreasuryReceipt: (data: {
+    studentBarcode: string;
+    month: string;
+    amount: number;
+    notes?: string;
+  }) => Promise<{ success: boolean; message: string; receipt?: TreasuryReceipt }>;
+  deleteTreasuryReceipt: (receiptId: string) => Promise<{ success: boolean; message: string }>;
+
+  // Backup & Restore
+  exportFullBackup: () => any;
+  restoreFullBackup: (backupData: any) => Promise<{ success: boolean; message: string }>;
+  resetToInitialDemoData: () => Promise<{ success: boolean; message: string }>;
 
   // WhatsApp Dispatchers
   generateStudentWhatsAppText: (student: StudentData, customNote?: string) => string;
@@ -808,6 +898,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [attendanceHistory, setAttendanceHistory] = useState<Record<string, Record<string, AttendanceType>>>({});
   const [attendanceToday, setAttendanceToday] = useState<Record<string, AttendanceType>>({});
   const [payments, setPayments] = useState<Record<string, Record<string, PaymentRecord>>>({});
+  const [exams, setExams] = useState<ExamRecord[]>(INITIAL_EXAMS);
+  const [receipts, setReceipts] = useState<TreasuryReceipt[]>(INITIAL_RECEIPTS);
 
   // Theme Toggler
   const toggleTheme = useCallback(() => {
@@ -852,7 +944,9 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       newHistory?: Record<string, Record<string, AttendanceType>>,
       newPayments?: Record<string, Record<string, PaymentRecord>>,
       newPrices?: Record<string, number>,
-      newTeacherPass?: string
+      newTeacherPass?: string,
+      newExams?: ExamRecord[],
+      newReceipts?: TreasuryReceipt[]
     ) => {
       const stateToSave = {
         teacherPassword: newTeacherPass || teacherPassword,
@@ -862,6 +956,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         attendanceHistory: newHistory || attendanceHistory,
         payments: newPayments || payments,
         groupPrices: newPrices || groupPrices,
+        exams: newExams || exams,
+        receipts: newReceipts || receipts,
         timestamp: new Date().toISOString(),
       };
 
@@ -877,7 +973,7 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsCloudSyncing(false);
       }
     },
-    [teacherPassword, students, broadcasts, directMessages, attendanceHistory, payments, groupPrices]
+    [teacherPassword, students, broadcasts, directMessages, attendanceHistory, payments, groupPrices, exams, receipts]
   );
 
   // Keep track of previous state to detect real-time changes targeting the active user
@@ -906,6 +1002,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (parsed.groupPrices) setGroupPrices(parsed.groupPrices);
         if (parsed.attendanceHistory) setAttendanceHistory(parsed.attendanceHistory);
         if (parsed.payments) setPayments(parsed.payments);
+        if (parsed.exams && Array.isArray(parsed.exams)) setExams(parsed.exams);
+        if (parsed.receipts && Array.isArray(parsed.receipts)) setReceipts(parsed.receipts);
       } catch (e) {
         console.error('Error loading local data:', e);
       }
@@ -1000,6 +1098,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (data.groupPrices) setGroupPrices(data.groupPrices);
             if (data.attendanceHistory) setAttendanceHistory(data.attendanceHistory);
             if (data.payments) setPayments(data.payments);
+            if (data.exams && Array.isArray(data.exams)) setExams(data.exams);
+            if (data.receipts && Array.isArray(data.receipts)) setReceipts(data.receipts);
             setTimeout(() => setIsCloudSyncing(false), 400);
           }
         },
@@ -1831,6 +1931,352 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [addBroadcast]
   );
 
+  // EXAMS & QUIZ SCORES OPERATIONS
+  const addExam = useCallback(
+    async (newExamData: {
+      title: string;
+      grade: string;
+      maxScore: number;
+      topic?: string;
+      date?: string;
+    }) => {
+      if (!newExamData.title.trim()) {
+        return { success: false, message: 'يرجى إدخال اسم الاختبار أو الكويز.' };
+      }
+
+      const newExam: ExamRecord = {
+        id: `exam-${Date.now()}`,
+        title: newExamData.title.trim(),
+        grade: newExamData.grade,
+        maxScore: Number(newExamData.maxScore) || 50,
+        topic: newExamData.topic?.trim() || '',
+        date: newExamData.date || new Date().toISOString().split('T')[0],
+        scores: {},
+        createdAt: new Date().toISOString(),
+      };
+
+      const nextExams = [newExam, ...exams];
+      setExams(nextExams);
+      await persistState(undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextExams);
+      return { success: true, message: `تم إنشاء (${newExam.title}) بنجاح! يمكنك الآن رصد درجات الطلاب.` };
+    },
+    [exams, persistState]
+  );
+
+  const saveExamScores = useCallback(
+    async (examId: string, scoresMap: Record<string, number>) => {
+      const targetExam = exams.find((e) => e.id === examId);
+      if (!targetExam) {
+        return { success: false, message: 'الاختبار غير موجود.' };
+      }
+
+      const updatedExam: ExamRecord = {
+        ...targetExam,
+        scores: { ...targetExam.scores, ...scoresMap },
+      };
+
+      const nextExams = exams.map((e) => (e.id === examId ? updatedExam : e));
+
+      // Update student performance records, calculate percentage, award star points
+      const nextStudents = students.map((st) => {
+        const score = scoresMap[st.barcode];
+        if (score !== undefined && !isNaN(score)) {
+          const maxScore = targetExam.maxScore || 50;
+          const percentage = Math.round((score / maxScore) * 100);
+          const scoreString = `${score} من ${maxScore} (${percentage}%)`;
+
+          // Points bonus: +10 for 100%, +5 for >= 90%, +3 for >= 80%
+          let pointBonus = 0;
+          if (percentage >= 100) pointBonus = 10;
+          else if (percentage >= 90) pointBonus = 5;
+          else if (percentage >= 80) pointBonus = 3;
+
+          const existingScores = st.totalExamScores || [];
+          return {
+            ...st,
+            lastExamTitle: targetExam.title,
+            lastExamScore: scoreString,
+            totalExamScores: [...existingScores, percentage],
+            points: (st.points || 0) + pointBonus,
+          };
+        }
+        return st;
+      });
+
+      setExams(nextExams);
+      setStudents(nextStudents);
+      await persistState(nextStudents, undefined, undefined, undefined, undefined, undefined, undefined, nextExams);
+
+      return {
+        success: true,
+        message: `تم حفظ درجات اختبار (${targetExam.title}) وتحديث سجلات الطلاب ولوحة الشرف بنجاح!`,
+      };
+    },
+    [exams, students, persistState]
+  );
+
+  const deleteExam = useCallback(
+    async (examId: string) => {
+      const nextExams = exams.filter((e) => e.id !== examId);
+      setExams(nextExams);
+      await persistState(undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextExams);
+      return { success: true, message: 'تم حذف سجل الاختبار بنجاح.' };
+    },
+    [exams, persistState]
+  );
+
+  const sendExamResultWhatsApp = useCallback(
+    (examId: string, studentBarcode: string) => {
+      const exam = exams.find((e) => e.id === examId);
+      const student = students.find((s) => s.barcode === studentBarcode);
+      if (!exam || !student) return;
+
+      const rawPhone = student.parentPhone || student.phone;
+      const cleanPhone = normalizeDigits(rawPhone).replace(/[^0-9]/g, '');
+      if (!cleanPhone) {
+        alert('لا يوجد رقم هاتف مسجل لولي أمر هذا الطالب.');
+        return;
+      }
+
+      const score = exam.scores[student.barcode];
+      const maxScore = exam.maxScore || 50;
+      const scoreText = score !== undefined ? `${score} من ${maxScore} (${Math.round((score / maxScore) * 100)}%)` : 'قيد الرصد';
+
+      let msg = `📝 *نتيجة اختبار الرياضيات - ${SCHOOL_TEACHER_NAME}*\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `👤 *الطالب/ة:* ${student.name}\n`;
+      msg += `🔢 *كود الطالب:* ${student.barcode}\n`;
+      msg += `📚 *المرحلة:* ${student.groupGrade}\n`;
+      msg += `🗓️ *تاريخ الاختبار:* ${exam.date}\n\n`;
+      msg += `📌 *عنوان الاختبار:* ${exam.title}\n`;
+      msg += `🎯 *الدرجة المحصلة:* ${scoreText}\n`;
+      msg += `⭐ *رصيد نقاط التميز الإجمالي:* ${student.points || 0} نقطة\n\n`;
+      msg += `━━━━━━━━━━━━━━━━━━━\n`;
+      msg += `🌐 لمتابعة تفاصيل الطالب عبر المنصة: ${window.location.origin}\n`;
+      msg += `مع أطيب التمنيات بالتفوق والنجاح 🌸`;
+
+      const intlPhone = cleanPhone.startsWith('0') ? `2${cleanPhone}` : cleanPhone.startsWith('2') ? cleanPhone : `20${cleanPhone}`;
+      window.open(`https://api.whatsapp.com/send?phone=${intlPhone}&text=${encodeURIComponent(msg)}`, '_blank');
+    },
+    [exams, students]
+  );
+
+  // TREASURY & RECEIPTS OPERATIONS
+  const recordTreasuryReceipt = useCallback(
+    async (data: {
+      studentBarcode: string;
+      month: string;
+      amount: number;
+      notes?: string;
+    }) => {
+      const student = students.find((s) => s.barcode.toLowerCase() === data.studentBarcode.toLowerCase());
+      if (!student) {
+        return { success: false, message: 'الطالب غير موجود.' };
+      }
+
+      const count = receipts.length + 1;
+      const recNumber = `REC-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`;
+      const todayStr = new Date().toISOString().split('T')[0];
+      const timeStr = new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+
+      const newReceipt: TreasuryReceipt = {
+        id: `rec-${Date.now()}`,
+        receiptNumber: recNumber,
+        studentBarcode: student.barcode,
+        studentName: student.name,
+        grade: student.groupGrade,
+        month: data.month,
+        amount: Number(data.amount) || 0,
+        date: todayStr,
+        time: timeStr,
+        notes: data.notes || 'سداد اشتراك شهري',
+        collectedBy: SCHOOL_TEACHER_NAME,
+      };
+
+      const nextReceipts = [newReceipt, ...receipts];
+
+      // Also register into payments state
+      const nextPayments = {
+        ...payments,
+        [data.month]: {
+          ...(payments[data.month] || {}),
+          [student.barcode]: {
+            amount: Number(data.amount) || 0,
+            date: todayStr,
+          },
+        },
+      };
+
+      // Add direct message to parent inbox
+      const receiptMsg: DirectStudentMessage = {
+        id: `rec-msg-${Date.now()}`,
+        studentBarcode: student.barcode,
+        sender: 'teacher',
+        senderName: SCHOOL_TEACHER_NAME,
+        title: `سند قبض إلكتروني رقم (${recNumber})`,
+        message: `تم استلام سداد اشتراك شهر (${data.month}) بمبلغ ${data.amount} ج.م للطالب/ة (${student.name}). رقم الإيصال: ${recNumber}. نشكركم على ثقتكم وتعاونكم المثمر.`,
+        date: todayStr,
+        time: timeStr,
+        category: 'general',
+        isRead: false,
+      };
+
+      const nextMessages = [receiptMsg, ...directMessages];
+
+      setReceipts(nextReceipts);
+      setPayments(nextPayments);
+      setDirectMessages(nextMessages);
+
+      await persistState(
+        undefined,
+        undefined,
+        nextMessages,
+        undefined,
+        nextPayments,
+        undefined,
+        undefined,
+        undefined,
+        nextReceipts
+      );
+
+      return {
+        success: true,
+        message: `تم إصدار سند القبض الإلكتروني (${recNumber}) بنجاح بمبلغ ${data.amount} ج.م!`,
+        receipt: newReceipt,
+      };
+    },
+    [students, receipts, payments, directMessages, persistState]
+  );
+
+  const deleteTreasuryReceipt = useCallback(
+    async (receiptId: string) => {
+      const nextReceipts = receipts.filter((r) => r.id !== receiptId);
+      setReceipts(nextReceipts);
+      await persistState(
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        nextReceipts
+      );
+      return { success: true, message: 'تم إلغاء وحذف سند القبض بنجاح.' };
+    },
+    [receipts, persistState]
+  );
+
+  // BACKUP & RESTORE
+  const exportFullBackup = useCallback(() => {
+    const backupObj = {
+      system: 'منظومة مس إيمان الدمشيتي للرياضيات',
+      version: '2.5.0',
+      exportedAt: new Date().toISOString(),
+      teacherPassword,
+      students,
+      broadcasts,
+      directMessages,
+      attendanceHistory,
+      payments,
+      groupPrices,
+      exams,
+      receipts,
+    };
+    return backupObj;
+  }, [
+    teacherPassword,
+    students,
+    broadcasts,
+    directMessages,
+    attendanceHistory,
+    payments,
+    groupPrices,
+    exams,
+    receipts,
+  ]);
+
+  const restoreFullBackup = useCallback(
+    async (backupData: any) => {
+      try {
+        if (!backupData || typeof backupData !== 'object') {
+          return { success: false, message: 'ملف النسخة الاحتياطية غير صالح أو تالف.' };
+        }
+
+        if (backupData.students && Array.isArray(backupData.students)) {
+          setStudents(backupData.students);
+        }
+        if (backupData.broadcasts && Array.isArray(backupData.broadcasts)) {
+          setBroadcasts(backupData.broadcasts);
+        }
+        if (backupData.directMessages && Array.isArray(backupData.directMessages)) {
+          setDirectMessages(backupData.directMessages);
+        }
+        if (backupData.attendanceHistory && typeof backupData.attendanceHistory === 'object') {
+          setAttendanceHistory(backupData.attendanceHistory);
+        }
+        if (backupData.payments && typeof backupData.payments === 'object') {
+          setPayments(backupData.payments);
+        }
+        if (backupData.groupPrices && typeof backupData.groupPrices === 'object') {
+          setGroupPrices(backupData.groupPrices);
+        }
+        if (backupData.exams && Array.isArray(backupData.exams)) {
+          setExams(backupData.exams);
+        }
+        if (backupData.receipts && Array.isArray(backupData.receipts)) {
+          setReceipts(backupData.receipts);
+        }
+        if (backupData.teacherPassword) {
+          setTeacherPassword(backupData.teacherPassword);
+        }
+
+        await persistState(
+          backupData.students,
+          backupData.broadcasts,
+          backupData.directMessages,
+          backupData.attendanceHistory,
+          backupData.payments,
+          backupData.groupPrices,
+          backupData.teacherPassword,
+          backupData.exams,
+          backupData.receipts
+        );
+
+        return { success: true, message: 'تم استرجاع النسخة الاحتياطية بنجاح ومزامنتها سحابياً!' };
+      } catch (err: any) {
+        return { success: false, message: `حدث خطأ أثناء استعادة النسخة: ${err.message}` };
+      }
+    },
+    [persistState]
+  );
+
+  const resetToInitialDemoData = useCallback(async () => {
+    setStudents(INITIAL_STUDENTS);
+    setBroadcasts(INITIAL_BROADCASTS);
+    setDirectMessages(INITIAL_DIRECT_MESSAGES);
+    setExams(INITIAL_EXAMS);
+    setReceipts(INITIAL_RECEIPTS);
+    setAttendanceHistory({});
+    setPayments({});
+    setTeacherPassword('2468');
+
+    await persistState(
+      INITIAL_STUDENTS,
+      INITIAL_BROADCASTS,
+      INITIAL_DIRECT_MESSAGES,
+      {},
+      {},
+      DEFAULT_GROUP_PRICES,
+      '2468',
+      INITIAL_EXAMS,
+      INITIAL_RECEIPTS
+    );
+
+    return { success: true, message: 'تمت إعادة تعيين البيانات التجريبية للمنظومة بنجاح.' };
+  }, [persistState]);
+
   return (
     <SystemContext.Provider
       value={{
@@ -1859,6 +2305,8 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         attendanceHistory,
         attendanceToday,
         payments,
+        exams,
+        receipts,
         markAttendance,
         recordPayment,
         addBroadcast,
@@ -1874,6 +2322,15 @@ export const SystemProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         toggleStudentStatus,
         resetStudentPassword,
         recordHomeworkStatus,
+        addExam,
+        saveExamScores,
+        deleteExam,
+        sendExamResultWhatsApp,
+        recordTreasuryReceipt,
+        deleteTreasuryReceipt,
+        exportFullBackup,
+        restoreFullBackup,
+        resetToInitialDemoData,
         generateStudentWhatsAppText,
         generateHomeworkWhatsAppText,
         sendWhatsAppToStudentParent,

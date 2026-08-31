@@ -43,10 +43,17 @@ import {
   FileSpreadsheet,
   PhoneOff,
   ShieldAlert,
+  DollarSign,
+  Database,
+  Sigma,
 } from 'lucide-react';
 import { AttendanceScannerTab } from './AttendanceScannerTab';
 import { HomeworkTrackerTab } from './HomeworkTrackerTab';
 import { LeaderboardAndReportsTab } from './LeaderboardAndReportsTab';
+import { ExamScoresTab } from './ExamScoresTab';
+import { TreasuryAccountsTab } from './TreasuryAccountsTab';
+import { BackupSyncTab } from './BackupSyncTab';
+import { MathVaultTab } from '../common/MathVaultTab';
 import { PhoneAuditModal } from './PhoneAuditModal';
 import { exportPhoneAuditToExcel, exportPhoneAuditToPDF, analyzeStudentPhoneStatus } from '../../utils/phoneAuditExport';
 
@@ -204,7 +211,7 @@ export const TeacherPortal: React.FC = () => {
         </div>
 
         {/* Tab Buttons */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5 mt-6 pt-6 border-t" style={{ borderColor: isDark ? 'rgba(212, 175, 55, 0.15)' : '#e2e8f0' }}>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5 mt-6 pt-6 border-t" style={{ borderColor: isDark ? 'rgba(212, 175, 55, 0.15)' : '#e2e8f0' }}>
           {[
             {
               id: 'attendance-scanner' as TeacherTab,
@@ -219,10 +226,28 @@ export const TeacherPortal: React.FC = () => {
               icon: FileText,
             },
             {
+              id: 'exam-scores' as TeacherTab,
+              label: '📝 رصد الاختبارات',
+              desc: 'كويزات، درجات، وشهادات',
+              icon: Award,
+            },
+            {
+              id: 'treasury-accounts' as TeacherTab,
+              label: '💰 الخزينة والسندات',
+              desc: 'اشتراكات وإيصالات قبض',
+              icon: DollarSign,
+            },
+            {
               id: 'leaderboard' as TeacherTab,
               label: '🏆 لوحة الأوائل',
               desc: 'تقارير وشرف وتكريم',
               icon: Award,
+            },
+            {
+              id: 'math-vault' as TeacherTab,
+              label: '📐 بنك الرياضيات',
+              desc: 'قوانين وتحديات كويز',
+              icon: Sigma,
             },
             {
               id: 'accounts' as TeacherTab,
@@ -249,6 +274,12 @@ export const TeacherPortal: React.FC = () => {
               icon: Send,
             },
             {
+              id: 'backup-sync' as TeacherTab,
+              label: '💾 النسخ والمزامنة',
+              desc: 'حفظ واسترجاع البيانات',
+              icon: Database,
+            },
+            {
               id: 'security' as TeacherTab,
               label: '🔐 رمز المرور',
               desc: 'تغيير وتعيين رمز المعلمة',
@@ -261,7 +292,7 @@ export const TeacherPortal: React.FC = () => {
               <button
                 key={tab.id}
                 onClick={() => setTeacherTab(tab.id)}
-                className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between ${
+                className={`p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between cursor-pointer ${
                   isActive
                     ? 'border-amber-400 bg-amber-500/15 shadow-lg scale-[1.01]'
                     : isDark
@@ -297,10 +328,38 @@ export const TeacherPortal: React.FC = () => {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 0.2: LEADERBOARD & INDIVIDUAL PERFORMANCE REPORTS */}
+      {/* TAB 0.2: EXAM SCORES & QUIZZES */}
+      {/* ========================================================= */}
+      {teacherTab === 'exam-scores' && (
+        <ExamScoresTab />
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 0.3: TREASURY & RECEIPTS */}
+      {/* ========================================================= */}
+      {teacherTab === 'treasury-accounts' && (
+        <TreasuryAccountsTab />
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 0.4: LEADERBOARD & INDIVIDUAL PERFORMANCE REPORTS */}
       {/* ========================================================= */}
       {teacherTab === 'leaderboard' && (
         <LeaderboardAndReportsTab />
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 0.5: MATH VAULT & FORMULAS */}
+      {/* ========================================================= */}
+      {teacherTab === 'math-vault' && (
+        <MathVaultTab />
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 0.6: BACKUP & DATA SYNC */}
+      {/* ========================================================= */}
+      {teacherTab === 'backup-sync' && (
+        <BackupSyncTab />
       )}
 
       {/* ========================================================= */}

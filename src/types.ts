@@ -53,6 +53,54 @@ export interface StudentData {
   whatsappNotes?: string;
 }
 
+export interface ExamRecord {
+  id: string;
+  title: string;
+  date: string;
+  maxScore: number;
+  grade: string;
+  topic?: string;
+  scores: Record<string, number>; // studentBarcode -> numeric score
+  createdAt: string;
+}
+
+export interface TreasuryReceipt {
+  id: string;
+  receiptNumber: string;
+  studentBarcode: string;
+  studentName: string;
+  grade: string;
+  month: string; // e.g. "2026-08"
+  amount: number;
+  date: string;
+  time: string;
+  notes?: string;
+  collectedBy: string;
+}
+
+export interface MathFormula {
+  id: string;
+  category: 'algebra' | 'geometry' | 'trigonometry' | 'trig' | 'calculus' | 'statistics' | 'mechanics';
+  categoryName?: string;
+  title: string;
+  formula: string;
+  explanation?: string;
+  description?: string;
+  grade: string;
+  example?: string;
+}
+
+export interface MathQuizQuestion {
+  id: string;
+  grade: string;
+  category?: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  points?: number;
+}
+
 export interface BroadcastAnnouncement {
   id: string;
   title: string;
@@ -94,21 +142,28 @@ export interface WhatsAppQueueItem {
 export type TeacherTab =
   | 'attendance-scanner'
   | 'homework-tracker'
+  | 'exam-scores'
+  | 'id-cards'
+  | 'treasury-accounts'
   | 'leaderboard'
+  | 'math-vault'
   | 'accounts'
   | 'broadcasts'
   | 'direct-messages'
   | 'whatsapp-dispatch'
+  | 'backup-sync'
   | 'security';
 
 export type ParentTab =
   | 'overview'
   | 'leaderboard'
   | 'homework'
+  | 'grades'
+  | 'payments'
+  | 'attendance'
+  | 'math-vault'
   | 'broadcasts'
   | 'inbox'
-  | 'grades'
-  | 'attendance'
   | 'contact';
 
 export const GRADE_ORDER = [
@@ -134,4 +189,5 @@ export const DEFAULT_GROUP_PRICES: Record<string, number> = {
   'الصف الثاني الثانوي': 200,
   'الصف الثالث الثانوي': 220,
 };
+
 

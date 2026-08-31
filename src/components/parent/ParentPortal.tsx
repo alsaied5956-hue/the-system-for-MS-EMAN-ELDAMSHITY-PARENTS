@@ -43,8 +43,15 @@ import {
   Download,
   FileText,
   Medal,
+  DollarSign,
+  Receipt,
+  Sigma,
+  Eye,
+  Printer,
 } from 'lucide-react';
 import jsPDF from 'jspdf';
+import { TreasuryReceipt } from '../../types';
+import { MathVaultTab } from '../common/MathVaultTab';
 import { requestBrowserNotificationPermission, soundEngine } from '../../utils/notificationEngine';
 
 export const ParentPortal: React.FC = () => {
@@ -61,6 +68,8 @@ export const ParentPortal: React.FC = () => {
     payments,
     groupPrices,
     sortedStudents,
+    exams,
+    receipts,
   } = useSystem();
 
   const isDark = theme === 'dark';
@@ -77,6 +86,7 @@ export const ParentPortal: React.FC = () => {
   const [attendanceGroupSchedule, setAttendanceGroupSchedule] = useState<'studentGroup' | 'sat_mon_wed' | 'sun_tue_thu'>('studentGroup');
   const [attendanceFilter, setAttendanceFilter] = useState<'all' | 'present' | 'late' | 'absent' | 'upcoming'>('all');
   const [attendanceViewLayout, setAttendanceViewLayout] = useState<'table' | 'cards'>('table');
+  const [activeVoucher, setActiveVoucher] = useState<TreasuryReceipt | null>(null);
 
   if (!currentStudent) {
     return (
@@ -348,6 +358,10 @@ export const ParentPortal: React.FC = () => {
           { id: 'overview' as ParentTab, label: '🌟 التقرير الشامل', icon: Sparkles },
           { id: 'leaderboard' as ParentTab, label: '🏆 لوحة الشرف والأوائل', icon: Trophy },
           { id: 'homework' as ParentTab, label: '📚 متابعة الواجبات', icon: BookOpen },
+          { id: 'grades' as ParentTab, label: '📊 سجل الاختبارات', icon: Award },
+          { id: 'payments' as ParentTab, label: '💰 الاشتراكات وسندات القبض', icon: DollarSign },
+          { id: 'attendance' as ParentTab, label: '📅 سجل الحضور', icon: CalendarCheck },
+          { id: 'math-vault' as ParentTab, label: '📐 خزينة وقوانين الرياضيات', icon: Sigma },
           {
             id: 'broadcasts' as ParentTab,
             label: `📢 تنبيهات مس إيمان (${studentBroadcasts.length})`,
@@ -358,8 +372,6 @@ export const ParentPortal: React.FC = () => {
             label: `💬 رسائل الطالب (${studentMessages.length})`,
             icon: Inbox,
           },
-          { id: 'grades' as ParentTab, label: '📊 سجل الاختبارات', icon: Award },
-          { id: 'attendance' as ParentTab, label: '📅 سجل الحضور', icon: CalendarCheck },
           { id: 'contact' as ParentTab, label: '📞 التواصل والمراسلة', icon: MessageSquare },
         ].map((tab) => {
           const Icon = tab.icon;
@@ -1057,39 +1069,230 @@ export const ParentPortal: React.FC = () => {
       )}
 
       {/* ========================================================= */}
-      {/* VIEW 4: GRADES */}
+      {/* VIEW 4: GRADES & EXAM PERFORMANCE */}
       {/* ========================================================= */}
-      {parentTab === 'grades' && (
-        <div
-          className="p-6 rounded-3xl border space-y-4"
-          style={{
-            backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
-            borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
-          }}
-        >
-          <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
-            <h3 className="text-base font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
-              سجل درجات الاختبارات والكويزات
-            </h3>
-            <span className="text-xs font-bold text-amber-400">
-              متوسط الأداء التراكمي: {avgExams}%
-            </span>
-          </div>
+      {parentTab === 'grades' && (() => {
+        const studentExams = exams.filter(
+          (e) => e.grade === currentStudent.groupGrade
+        );
 
-          {currentStudent.lastExamTitle ? (
-            <div className="p-4 rounded-2xl border space-y-2" style={{ backgroundColor: isDark ? 'rgba(9, 14, 23, 0.8)' : '#f8fafc', borderColor: 'rgba(212, 175, 55, 0.2)' }}>
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-black text-slate-200">{currentStudent.lastExamTitle}</h4>
-                <span className="text-xs font-bold text-amber-400 font-mono">{currentStudent.lastExamScore}</span>
+        return (
+          <div className="space-y-6">
+            {/* Header & Stats */}
+            <div
+              className="p-6 rounded-3xl border flex flex-col sm:flex-row items-center justify-between gap-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <div>
+                <h3 className="text-lg font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                  📊 سجل درجات الاختبارات والكويزات
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  متابعة الدرجات المحصلة في كويزات واختبارات الحصص لمرحلة {currentStudent.groupGrade}
+                </p>
               </div>
-              <p className="text-xs text-slate-400">
-                تقييم الأستاذة: أداء ممتاز مع إشادة خاصة بالحل النموذجي للتمارين والواجبات.
-              </p>
+
+              <div className="flex items-center gap-3">
+                <div className="px-4 py-2 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-center">
+                  <span className="text-[10px] text-slate-400 font-bold block">متوسط الدرجات</span>
+                  <span className="text-base font-black text-amber-400 font-mono">{avgExams}%</span>
+                </div>
+                <button
+                  onClick={handleDownloadStudentReport}
+                  className="btn-gold px-4 py-2 rounded-2xl text-xs font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>شهادة التقرير (PDF)</span>
+                </button>
+              </div>
             </div>
-          ) : (
-            <p className="text-xs text-slate-400 p-4">لا توجد اختبارات مسجلة بعد في المنظومة.</p>
-          )}
-        </div>
+
+            {/* List of Exams */}
+            {studentExams.length === 0 ? (
+              <div
+                className="p-8 rounded-3xl border border-dashed text-center text-slate-400"
+                style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}
+              >
+                لم يتم إدراج اختبارات للمرحلة بعد.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {studentExams.map((exam) => {
+                  const score = exam.scores ? exam.scores[currentStudent.barcode] : undefined;
+                  const hasScore = score !== undefined && !isNaN(score);
+                  const max = exam.maxScore || 50;
+                  const percentage = hasScore ? Math.round((score / max) * 100) : 0;
+
+                  return (
+                    <div
+                      key={exam.id}
+                      className="p-5 rounded-3xl border space-y-3 flex flex-col justify-between"
+                      style={{
+                        backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                        borderColor: isDark ? 'rgba(212, 175, 55, 0.2)' : '#e2e8f0',
+                      }}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div>
+                            <h4 className="text-sm font-black text-slate-800 dark:text-amber-300">
+                              {exam.title}
+                            </h4>
+                            {exam.topic && (
+                              <p className="text-xs text-slate-400 mt-0.5">{exam.topic}</p>
+                            )}
+                          </div>
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30 shrink-0">
+                            🗓️ {exam.date}
+                          </span>
+                        </div>
+
+                        {/* Score display */}
+                        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between">
+                          <span className="text-xs text-slate-400 font-bold">الدرجة المحققة:</span>
+                          {hasScore ? (
+                            <div className="flex items-center gap-2">
+                              <span className="text-base font-black text-amber-400 font-mono">
+                                {score} / {max}
+                              </span>
+                              <span className="text-xs font-bold text-amber-300 font-mono">
+                                ({percentage}%)
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">بانتظار رصد الدرجة</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {hasScore && (
+                        <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-500 to-yellow-400 rounded-full"
+                            style={{ width: `${Math.min(100, percentage)}%` }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* ========================================================= */}
+      {/* VIEW 4.1: PAYMENTS & ELECTRONIC RECEIPTS */}
+      {/* ========================================================= */}
+      {parentTab === 'payments' && (() => {
+        const studentReceipts = receipts.filter(
+          (r) => r.studentBarcode === currentStudent.barcode
+        );
+
+        return (
+          <div className="space-y-6">
+            {/* Current Month Subscription Card */}
+            <div
+              className="p-6 rounded-3xl border space-y-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4" style={{ borderColor: 'rgba(212, 175, 55, 0.15)' }}>
+                <div>
+                  <h3 className="text-lg font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                    💰 حالة اشتراك الشهر الحالي ({currentMonthKey})
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1">
+                    قيمة الاشتراك الشهري للمرحلة: {requiredAmount} جنيه مصري
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {monthPaid ? (
+                    <span className="px-4 py-2 rounded-2xl text-xs font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                      <Check className="w-4 h-4" />
+                      تم سداد اشتراك الشهر ({monthPaid.amount} ج.م)
+                    </span>
+                  ) : (
+                    <span className="px-4 py-2 rounded-2xl text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                      بانتظار السداد لشهر ({currentMonthKey})
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Electronic Receipts Archive */}
+            <div
+              className="p-6 rounded-3xl border space-y-4"
+              style={{
+                backgroundColor: isDark ? 'rgba(18, 25, 38, 0.92)' : '#ffffff',
+                borderColor: isDark ? 'rgba(212, 175, 55, 0.22)' : '#e2e8f0',
+              }}
+            >
+              <h3 className="text-base font-black" style={{ color: isDark ? '#fcf6ba' : '#966c15' }}>
+                🧾 سندات وإيصالات القبض المسجلة للطالب ({studentReceipts.length})
+              </h3>
+
+              {studentReceipts.length === 0 ? (
+                <div
+                  className="p-8 rounded-2xl border border-dashed text-center text-slate-400 text-xs"
+                  style={{ borderColor: 'rgba(212, 175, 55, 0.2)' }}
+                >
+                  لا توجد سندات قبض مسجلة حتى الآن. عند سداد الاشتراك سيصلك إيصال إلكتروني فوري هنا.
+                </div>
+              ) : (
+                <div className="overflow-x-auto rounded-2xl border border-slate-700/30">
+                  <table className="w-full text-right text-xs">
+                    <thead className="bg-amber-500/10 text-amber-300 border-b border-slate-700/30 font-black">
+                      <tr>
+                        <th className="p-3">رقم الإيصال</th>
+                        <th className="p-3">تاريخ ووقت السداد</th>
+                        <th className="p-3">عن شهر</th>
+                        <th className="p-3">المبلغ المسدد</th>
+                        <th className="p-3">المستلم</th>
+                        <th className="p-3 text-center no-print">عرض وطباعة</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/20">
+                      {studentReceipts.map((rec) => (
+                        <tr key={rec.id} className="hover:bg-amber-500/5 transition-colors">
+                          <td className="p-3 font-mono font-black text-amber-400">{rec.receiptNumber}</td>
+                          <td className="p-3 font-mono text-slate-400">{rec.date} ({rec.time})</td>
+                          <td className="p-3 text-slate-300 font-mono">{rec.month}</td>
+                          <td className="p-3 font-mono font-black text-emerald-400 text-sm">{rec.amount} ج.م</td>
+                          <td className="p-3 text-slate-400">{rec.collectedBy}</td>
+                          <td className="p-3 text-center no-print">
+                            <button
+                              onClick={() => setActiveVoucher(rec)}
+                              className="px-3 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400 text-amber-300 hover:text-slate-950 text-xs font-black transition-all inline-flex items-center gap-1 cursor-pointer"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              عرض السند 🧾
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ========================================================= */}
+      {/* VIEW 4.2: MATH VAULT & LAWS */}
+      {/* ========================================================= */}
+      {parentTab === 'math-vault' && (
+        <MathVaultTab />
       )}
 
       {/* ========================================================= */}
@@ -1701,6 +1904,100 @@ export const ParentPortal: React.FC = () => {
               <PhoneCall className="w-4 h-4 text-amber-400" />
               <span>اتصال هاتفي مباشر ({SCHOOL_TEACHER_PHONE})</span>
             </a>
+          </div>
+        </div>
+      )}
+
+      {/* LUXURY RECEIPT VOUCHER PREVIEW & PRINT MODAL FOR PARENT */}
+      {activeVoucher && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-xl bg-white text-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl relative border-4 border-amber-400">
+            <button
+              onClick={() => setActiveVoucher(null)}
+              className="absolute top-4 left-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 no-print cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            {/* Voucher Body for Print / Display */}
+            <div className="space-y-6 text-right font-sans">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b-2 border-amber-400">
+                <div className="text-right">
+                  <h2 className="text-xl font-black text-amber-900">سند قبض نقدية رسمي</h2>
+                  <p className="text-xs font-bold text-amber-700">مجموعات الأستاذة / {SCHOOL_TEACHER_NAME}</p>
+                  <p className="text-[11px] text-slate-500">معلمة أولى الرياضيات والتحليل الرياضي</p>
+                </div>
+                <div className="text-left font-mono">
+                  <div className="px-3 py-1 bg-amber-100 border border-amber-300 rounded-xl text-xs font-black text-amber-900">
+                    {activeVoucher.receiptNumber}
+                  </div>
+                  <span className="text-[10px] text-slate-500 block mt-1">{activeVoucher.date}</span>
+                </div>
+              </div>
+
+              {/* Receipt Content Details */}
+              <div className="p-4 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-3 text-xs leading-relaxed">
+                <div className="flex justify-between border-b border-amber-200/60 pb-2">
+                  <span className="text-slate-500 font-bold">استلمنا من ولي أمر الطالب/ة:</span>
+                  <span className="font-black text-slate-900 text-sm">{activeVoucher.studentName}</span>
+                </div>
+
+                <div className="flex justify-between border-b border-amber-200/60 pb-2">
+                  <span className="text-slate-500 font-bold">كود الباركود التعريفي:</span>
+                  <span className="font-mono font-bold text-slate-800">{activeVoucher.studentBarcode}</span>
+                </div>
+
+                <div className="flex justify-between border-b border-amber-200/60 pb-2">
+                  <span className="text-slate-500 font-bold">المرحلة الدراسية:</span>
+                  <span className="font-bold text-slate-800">{activeVoucher.grade}</span>
+                </div>
+
+                <div className="flex justify-between border-b border-amber-200/60 pb-2">
+                  <span className="text-slate-500 font-bold">سداد اشتراك عن شهر:</span>
+                  <span className="font-mono font-bold text-amber-800 text-sm">{activeVoucher.month}</span>
+                </div>
+
+                <div className="flex justify-between items-center pt-1">
+                  <span className="text-slate-500 font-bold">المبلغ المسدد وقدره:</span>
+                  <div className="px-4 py-1.5 rounded-xl bg-amber-500 text-slate-950 font-black text-base font-mono shadow-sm">
+                    {activeVoucher.amount} جنيه مصري فقط لا غير
+                  </div>
+                </div>
+
+                {activeVoucher.notes && (
+                  <div className="pt-2 text-[11px] text-slate-600">
+                    <span className="font-bold text-slate-800">البيان / ملاحظات: </span>
+                    {activeVoucher.notes}
+                  </div>
+                )}
+              </div>
+
+              {/* Signatures & Stamps */}
+              <div className="flex items-end justify-between pt-4 text-xs font-bold text-slate-700">
+                <div>
+                  <p className="text-[11px] text-slate-500 mb-1">توقيع وختم الإدارة:</p>
+                  <div className="w-24 h-12 border-2 border-dashed border-amber-400 rounded-xl flex items-center justify-center text-[10px] text-amber-800 font-bold">
+                    معتمد إلكترونياً
+                  </div>
+                </div>
+                <div className="text-left">
+                  <p className="text-slate-500">المستلم: {activeVoucher.collectedBy}</p>
+                  <p className="text-[10px] text-slate-400 mt-1">هاتف: {SCHOOL_TEACHER_PHONE}</p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-200 no-print">
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2 rounded-xl text-xs font-black text-white bg-slate-900 hover:bg-slate-800 flex items-center gap-2 cursor-pointer shadow-md"
+                >
+                  <Printer className="w-4 h-4" />
+                  طباعة الإيصال (Print)
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
